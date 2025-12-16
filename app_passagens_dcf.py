@@ -78,7 +78,6 @@ df = carregar_dados()
 # 3. APLICATIVO DASH
 # ----------------------------------------
 
-app = Dash(__name__)
 
 nomes_meses = [
     "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -590,5 +589,10 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
 # ----------------------------------------
 # 9. Rodar App
 # ----------------------------------------
+import os
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8050))
+    )
