@@ -81,7 +81,7 @@ nomes_meses = [
 ]
 
 # ----------------------------------------
-# 4. LAYOUT — COLUNA ESQUERDA (original)
+# 4. LAYOUT
 # ----------------------------------------
 
 app.layout = html.Div([
@@ -89,9 +89,18 @@ app.layout = html.Div([
 
         # -------- COLUNA ESQUERDA — FIXA --------
         html.Div([
-            html.Img(
-                src="/assets/logo_unifei.png",
-                style={"width": "80%", "marginBottom": "20px"}
+            html.Div(
+                html.Img(
+                    src="/assets/logo_unifei.png",
+                    style={
+                        "width": "75%",
+                        "marginBottom": "25px"
+                    }
+                ),
+                style={
+                    "display": "flex",
+                    "justifyContent": "center"
+                }
             ),
 
             html.H3("Ano", style={"color": "white"}),
@@ -101,7 +110,9 @@ app.layout = html.Div([
                          for a in sorted(df["Ano"].dropna().unique())],
                 value=2025,
                 clearable=False,
-                style={"color": "black"}
+                style={"color": "black"},
+                optionHeight=40,   # mais espaço entre opções
+                maxHeight=400
             ),
 
             html.H3("Mês", style={"marginTop": "20px", "color": "white"}),
@@ -112,7 +123,9 @@ app.layout = html.Div([
                 value=None,
                 placeholder="Todos",
                 clearable=True,
-                style={"color": "black"}
+                style={"color": "black"},
+                optionHeight=40,
+                maxHeight=400
             ),
 
             html.H3("Unidade (Viagem)", style={"marginTop": "20px", "color": "white"}),
@@ -123,7 +136,9 @@ app.layout = html.Div([
                 value=None,
                 placeholder="Todas",
                 clearable=True,
-                style={"color": "black"}
+                style={"color": "black"},
+                optionHeight=50,   # mais espaçamento nas unidades
+                maxHeight=400
             ),
 
             html.Div([
@@ -143,14 +158,16 @@ app.layout = html.Div([
             ])
         ],
             style={
-                "width": "20%",
+                "width": "320px",
                 "padding": "15px",
                 "backgroundColor": "#0b2b57",
                 "color": "white",
                 "height": "100vh",
-                "position": "sticky",
+                "position": "fixed",
                 "top": 0,
-                "overflow": "auto"
+                "left": 0,
+                "overflowY": "auto",
+                "boxSizing": "border-box"
             }),
 
         # -------- COLUNA DIREITA --------
@@ -236,9 +253,11 @@ app.layout = html.Div([
 
         ],
             style={
-                "width": "80%",
                 "padding": "15px",
-                "overflowY": "auto"
+                "marginLeft": "320px",
+                "width": "calc(100% - 320px)",
+                "overflowY": "auto",
+                "boxSizing": "border-box"
             }
         )
 
@@ -250,7 +269,6 @@ app.layout = html.Div([
 # ----------------------------------------
 # 5. CALLBACK — Atualização geral
 # ----------------------------------------
-
 
 @app.callback(
     [
@@ -326,11 +344,12 @@ def atualizar_pagina(ano, mes, unidade):
         card("Restituições", total_restit),
     ]
 
-    # --- Pizza (valores centralizados) ---
+    # --- Pizza ---
     pizza_df = pd.DataFrame({
         "Tipo": ["No prazo", "Urgência"],
         "Valor": [total_prazo, total_urgencia]
     })
+
     fig_pizza = px.pie(
         pizza_df,
         names="Tipo",
@@ -343,10 +362,11 @@ def atualizar_pagina(ano, mes, unidade):
     fig_pizza.update_layout(title_x=0.5)
     fig_pizza.update_traces(
         texttemplate="<b>%{label}</b><br>R$ %{value:,.2f}<br>(%{percent})",
+        hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<extra></extra>",
         textposition="inside"
-    )  # [web:22][web:58]
+    )
 
-    # --- Barras (valores centralizados dentro da barra) ---
+    # --- Barras ---
     barras_df = pd.DataFrame({
         "Categoria": ["Diárias", "Passagens"],
         "Valor": [total_diarias, total_passagem]
@@ -362,8 +382,9 @@ def atualizar_pagina(ano, mes, unidade):
     )
     fig_barras.update_traces(
         texttemplate="R$ %{y:,.2f}",
-        textposition="inside"
-    )  # [web:32][web:55][web:61]
+        textposition="inside",
+        hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>"
+    )
     fig_barras.update_layout(
         title_x=0.5,
         showlegend=False,
@@ -396,11 +417,9 @@ def atualizar_pagina(ano, mes, unidade):
 
     return cards, fig_pizza, fig_barras, resumo.to_dict("records"), dados_pdf
 
-
 # ----------------------------------------
 # 6. CALLBACK — Tabela de Detalhamento
 # ----------------------------------------
-
 
 @app.callback(
     Output("tabela_detalhe", "data"),
@@ -445,11 +464,9 @@ def atualizar_detalhe(ano, mes, unidade):
 
     return dff.to_dict("records")
 
-
 # ----------------------------------------
 # 7. CALLBACK — Limpar filtros
 # ----------------------------------------
-
 
 @app.callback(
     [
@@ -463,7 +480,6 @@ def atualizar_detalhe(ano, mes, unidade):
 def limpar(n):
     return 2025, None, None
 
-
 # ----------------------------------------
 # 8. CALLBACK — Geração do PDF (sem gráficos, com cards)
 # ----------------------------------------
@@ -475,10 +491,8 @@ wrap_style = ParagraphStyle(
     spaceAfter=4
 )
 
-
 def wrap(text):
     return Paragraph(str(text), wrap_style)
-
 
 @app.callback(
     Output("download_relatorio", "data"),
@@ -542,7 +556,7 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
         ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0b2b57")),
-    ]))  # [web:44][web:63]
+    ]))
     story.append(tbl_cards)
     story.append(Spacer(1, 0.4 * inch))
 
@@ -617,7 +631,6 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
     buffer.seek(0)
 
     return dcc.send_bytes(buffer.getvalue(), "relatorio_gastos_viagens.pdf")
-
 
 # ----------------------------------------
 # 9. Rodar App
