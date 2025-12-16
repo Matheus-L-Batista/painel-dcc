@@ -110,8 +110,11 @@ app.layout = html.Div([
                          for a in sorted(df["Ano"].dropna().unique())],
                 value=2025,
                 clearable=False,
-                style={"color": "black"},
-                optionHeight=40,   # mais espaço entre opções
+                style={
+                    "color": "black",
+                    "width": "100%"
+                },
+                optionHeight=40,
                 maxHeight=400
             ),
 
@@ -123,7 +126,10 @@ app.layout = html.Div([
                 value=None,
                 placeholder="Todos",
                 clearable=True,
-                style={"color": "black"},
+                style={
+                    "color": "black",
+                    "width": "100%"
+                },
                 optionHeight=40,
                 maxHeight=400
             ),
@@ -136,8 +142,11 @@ app.layout = html.Div([
                 value=None,
                 placeholder="Todas",
                 clearable=True,
-                style={"color": "black"},
-                optionHeight=50,   # mais espaçamento nas unidades
+                style={
+                    "color": "black",
+                    "width": "100%"
+                },
+                optionHeight=50,
                 maxHeight=400
             ),
 
