@@ -84,200 +84,174 @@ nomes_meses = [
 # 4. LAYOUT
 # ----------------------------------------
 
-app.layout = html.Div([
-    html.Div([
+app.layout = html.Div(
+    className="app-root",
+    children=[
+        html.Div(
+            className="app-container",
+            children=[
+                # -------- COLUNA ESQUERDA — FIXA --------
+                html.Div(
+                    className="sidebar",
+                    children=[
+                        html.Div(
+                            className="sidebar-logo-wrapper",
+                            children=html.Img(
+                                src="/assets/logo_unifei.png",
+                                className="sidebar-logo",
+                            ),
+                        ),
 
-        # -------- COLUNA ESQUERDA — FIXA --------
-        html.Div([
-            html.Div(
-                html.Img(
-                    src="/assets/logo_unifei.png",
-                    style={
-                        "width": "75%",
-                        "marginBottom": "25px"
-                    }
+                        html.H3("Ano", className="sidebar-title"),
+                        dcc.Dropdown(
+                            id="filtro_ano",
+                            options=[{"label": int(a), "value": int(a)}
+                                     for a in sorted(df["Ano"].dropna().unique())],
+                            value=2025,
+                            clearable=False,
+                            style={"color": "black", "width": "100%"},
+                            optionHeight=40,
+                            maxHeight=400,
+                        ),
+
+                        html.H3("Mês", className="sidebar-title"),
+                        dcc.Dropdown(
+                            id="filtro_mes",
+                            options=[{"label": m.capitalize(), "value": i}
+                                     for i, m in enumerate(nomes_meses, start=1)],
+                            value=None,
+                            placeholder="Todos",
+                            clearable=True,
+                            style={"color": "black", "width": "100%"},
+                            optionHeight=40,
+                            maxHeight=400,
+                        ),
+
+                        html.H3("Unidade (Viagem)", className="sidebar-title"),
+                        dcc.Dropdown(
+                            id="filtro_unidade",
+                            options=[{"label": u, "value": u}
+                                     for u in sorted(df["Unidade (Viagem)"].unique())],
+                            value=None,
+                            placeholder="Todas",
+                            clearable=True,
+                            style={"color": "black", "width": "100%"},
+                            optionHeight=50,
+                            maxHeight=400,
+                        ),
+
+                        html.Div(
+                            className="sidebar-buttons",
+                            children=[
+                                html.Button(
+                                    "Limpar filtros",
+                                    id="btn_limpar_filtros",
+                                    n_clicks=0,
+                                    className="sidebar-button",
+                                ),
+                                html.Button(
+                                    "Baixar Relatório PDF",
+                                    id="btn_download_relatorio",
+                                    n_clicks=0,
+                                    className="sidebar-button",
+                                ),
+                                dcc.Download(id="download_relatorio"),
+                            ],
+                        ),
+                    ],
                 ),
-                style={
-                    "display": "flex",
-                    "justifyContent": "center"
-                }
-            ),
 
-            html.H3("Ano", style={"color": "white"}),
-            dcc.Dropdown(
-                id="filtro_ano",
-                options=[{"label": int(a), "value": int(a)}
-                         for a in sorted(df["Ano"].dropna().unique())],
-                value=2025,
-                clearable=False,
-                style={
-                    "color": "black",
-                    "width": "100%"
-                },
-                optionHeight=40,
-                maxHeight=400
-            ),
+                # -------- COLUNA DIREITA --------
+                html.Div(
+                    className="main-content",
+                    children=[
+                        html.H2(
+                            "Gastos com Viagens",
+                            style={"textAlign": "center"},
+                        ),
 
-            html.H3("Mês", style={"marginTop": "20px", "color": "white"}),
-            dcc.Dropdown(
-                id="filtro_mes",
-                options=[{"label": m.capitalize(), "value": i}
-                         for i, m in enumerate(nomes_meses, start=1)],
-                value=None,
-                placeholder="Todos",
-                clearable=True,
-                style={
-                    "color": "black",
-                    "width": "100%"
-                },
-                optionHeight=40,
-                maxHeight=400
-            ),
+                        # ----- CARDS -----
+                        html.Div(
+                            id="cards_container",
+                            className="cards-container",
+                        ),
 
-            html.H3("Unidade (Viagem)", style={"marginTop": "20px", "color": "white"}),
-            dcc.Dropdown(
-                id="filtro_unidade",
-                options=[{"label": u, "value": u}
-                         for u in sorted(df["Unidade (Viagem)"].unique())],
-                value=None,
-                placeholder="Todas",
-                clearable=True,
-                style={
-                    "color": "black",
-                    "width": "100%"
-                },
-                optionHeight=50,
-                maxHeight=400
-            ),
+                        # ----- GRÁFICOS LADO A LADO -----
+                        html.Div(
+                            className="charts-row",
+                            children=[
+                                dcc.Graph(id="grafico_pizza", style={"width": "50%"}),
+                                dcc.Graph(id="grafico_barras", style={"width": "50%"}),
+                            ],
+                        ),
 
-            html.Div([
-                html.Button(
-                    "Limpar filtros",
-                    id="btn_limpar_filtros",
-                    n_clicks=0,
-                    style={"width": "100%", "marginTop": "20px"}
+                        # ----- RESUMO POR UNIDADE -----
+                        html.H4("Resumo por Unidade"),
+                        dash_table.DataTable(
+                            id="tabela_unidades",
+                            row_selectable=False,
+                            cell_selectable=False,
+                            active_cell=None,
+                            selected_cells=[],
+                            selected_rows=[],
+                            columns=[
+                                {"name": "Unidade (Viagem)", "id": "Unidade (Viagem)"},
+                                {"name": "Gasto com Diárias", "id": "Valor das Diárias"},
+                                {"name": "Gasto com Passagem", "id": "Valor da Passagem"},
+                                {"name": "Gasto com Restituição", "id": "Valor Restituição"},
+                                {"name": "Gasto com Seguro Viagem", "id": "Valor Seguro Viagem"},
+                            ],
+                            data=[],
+                            style_table={"overflowX": "auto"},
+                            style_cell={"textAlign": "center", "padding": "4px"},
+                            style_header={
+                                "fontWeight": "bold",
+                                "backgroundColor": "#f0f0f0",
+                            },
+                        ),
+
+                        # ----- DETALHAMENTO PCDP -----
+                        html.H4("Detalhamento por Unidade e PCDP"),
+                        dash_table.DataTable(
+                            id="tabela_detalhe",
+                            row_selectable=False,
+                            cell_selectable=False,
+                            active_cell=None,
+                            selected_cells=[],
+                            selected_rows=[],
+                            columns=[
+                                {"name": "Unidade (Viagem)", "id": "Unidade (Viagem)"},
+                                {"name": "Número da PCDP", "id": "Número da PCDP"},
+                                {"name": "Data Início da Viagem", "id": "Data Início da Viagem"},
+                                {
+                                    "name": "Custo passagens no prazo",
+                                    "id": "Custo com emissão de passagens dentro do prazo",
+                                },
+                                {
+                                    "name": "Custo passagens urgência",
+                                    "id": "Custo com emissão de passagens em caráter de urgência",
+                                },
+                            ],
+                            data=[],
+                            style_table={"overflowX": "auto"},
+                            style_cell={"textAlign": "center", "padding": "4px"},
+                            style_header={
+                                "fontWeight": "bold",
+                                "backgroundColor": "#f0f0f0",
+                            },
+                        ),
+                    ],
                 ),
-                html.Button(
-                    "Baixar Relatório PDF",
-                    id="btn_download_relatorio",
-                    n_clicks=0,
-                    style={"width": "100%", "marginTop": "10px"}
-                ),
-                dcc.Download(id="download_relatorio"),
-            ])
-        ],
-            style={
-                "width": "320px",
-                "padding": "15px",
-                "backgroundColor": "#0b2b57",
-                "color": "white",
-                "height": "100vh",
-                "position": "fixed",
-                "top": 0,
-                "left": 0,
-                "overflowY": "auto",
-                "boxSizing": "border-box"
-            }),
-
-        # -------- COLUNA DIREITA --------
-        html.Div([
-
-            html.H2("Gastos com Viagens", style={"textAlign": "center"}),
-
-            # ----- CARDS -----
-            html.Div(
-                id="cards_container",
-                style={
-                    "display": "flex",
-                    "justifyContent": "space-between",
-                    "gap": "10px",
-                    "marginBottom": "20px",
-                    "flexWrap": "wrap"
-                }
-            ),
-
-            # ----- GRÁFICOS LADO A LADO -----
-            html.Div([
-                dcc.Graph(id="grafico_pizza", style={"width": "50%"}),
-                dcc.Graph(id="grafico_barras", style={"width": "50%"})
             ],
-                style={
-                    "display": "flex",
-                    "justifyContent": "space-between",
-                    "marginBottom": "25px"
-                }
-            ),
-
-            # ----- RESUMO POR UNIDADE -----
-            html.H4("Resumo por Unidade"),
-            dash_table.DataTable(
-                id="tabela_unidades",
-                row_selectable=False,
-                cell_selectable=False,
-                active_cell=None,
-                selected_cells=[],
-                selected_rows=[],
-                columns=[
-                    {"name": "Unidade (Viagem)", "id": "Unidade (Viagem)"},
-                    {"name": "Gasto com Diárias", "id": "Valor das Diárias"},
-                    {"name": "Gasto com Passagem", "id": "Valor da Passagem"},
-                    {"name": "Gasto com Restituição", "id": "Valor Restituição"},
-                    {"name": "Gasto com Seguro Viagem", "id": "Valor Seguro Viagem"},
-                ],
-                data=[],
-                style_table={"overflowX": "auto"},
-                style_cell={"textAlign": "center", "padding": "4px"},
-                style_header={
-                    "fontWeight": "bold",
-                    "backgroundColor": "#f0f0f0"
-                }
-            ),
-
-            # ----- DETALHAMENTO PCDP -----
-            html.H4("Detalhamento por Unidade e PCDP"),
-            dash_table.DataTable(
-                id="tabela_detalhe",
-                row_selectable=False,
-                cell_selectable=False,
-                active_cell=None,
-                selected_cells=[],
-                selected_rows=[],
-                columns=[
-                    {"name": "Unidade (Viagem)", "id": "Unidade (Viagem)"},
-                    {"name": "Número da PCDP", "id": "Número da PCDP"},
-                    {"name": "Data Início da Viagem", "id": "Data Início da Viagem"},
-                    {"name": "Custo passagens no prazo",
-                     "id": "Custo com emissão de passagens dentro do prazo"},
-                    {"name": "Custo passagens urgência",
-                     "id": "Custo com emissão de passagens em caráter de urgência"},
-                ],
-                data=[],
-                style_table={"overflowX": "auto"},
-                style_cell={"textAlign": "center", "padding": "4px"},
-                style_header={
-                    "fontWeight": "bold",
-                    "backgroundColor": "#f0f0f0"
-                }
-            ),
-
-        ],
-            style={
-                "padding": "15px",
-                "marginLeft": "320px",
-                "width": "calc(100% - 320px)",
-                "overflowY": "auto",
-                "boxSizing": "border-box"
-            }
-        )
-
-    ], style={"display": "flex"}),
-
-    dcc.Store(id="store_graficos")
-])
+        ),
+        dcc.Store(id="store_graficos"),
+    ],
+)
 
 # ----------------------------------------
 # 5. CALLBACK — Atualização geral
 # ----------------------------------------
+
 
 @app.callback(
     [
@@ -315,33 +289,18 @@ def atualizar_pagina(ano, mes, unidade):
         return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     def card(titulo, valor):
-        return html.Div([
-            html.Div(
-                titulo,
-                style={
-                    "fontSize": "14px",
-                    "color": "#555",
-                    "textAlign": "center"
-                }
-            ),
-            html.Div(
-                f(valor),
-                style={
-                    "fontSize": "22px",
-                    "fontWeight": "bold",
-                    "color": "#b30000",
-                    "textAlign": "center"
-                }
-            )
-        ],
-            style={
-                "backgroundColor": "white",
-                "padding": "10px 15px",
-                "borderRadius": "4px",
-                "boxShadow": "0 1px 3px rgba(0,0,0,0.2)",
-                "flex": "1",
-                "minWidth": "0"
-            }
+        return html.Div(
+            className="card",
+            children=[
+                html.Div(
+                    titulo,
+                    className="card-title",
+                ),
+                html.Div(
+                    f(valor),
+                    className="card-value",
+                ),
+            ],
         )
 
     cards = [
@@ -354,10 +313,9 @@ def atualizar_pagina(ano, mes, unidade):
     ]
 
     # --- Pizza ---
-    pizza_df = pd.DataFrame({
-        "Tipo": ["No prazo", "Urgência"],
-        "Valor": [total_prazo, total_urgencia]
-    })
+    pizza_df = pd.DataFrame(
+        {"Tipo": ["No prazo", "Urgência"], "Valor": [total_prazo, total_urgencia]}
+    )
 
     fig_pizza = px.pie(
         pizza_df,
@@ -366,20 +324,19 @@ def atualizar_pagina(ano, mes, unidade):
         hole=0.45,
         color="Tipo",
         color_discrete_map={"No prazo": "#003A70", "Urgência": "#DA291C"},
-        title="Passagens — No prazo x Urgência"
+        title="Passagens — No prazo x Urgência",
     )
     fig_pizza.update_layout(title_x=0.5)
     fig_pizza.update_traces(
         texttemplate="<b>%{label}</b><br>R$ %{value:,.2f}<br>(%{percent})",
         hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<extra></extra>",
-        textposition="inside"
+        textposition="inside",
     )
 
     # --- Barras ---
-    barras_df = pd.DataFrame({
-        "Categoria": ["Diárias", "Passagens"],
-        "Valor": [total_diarias, total_passagem]
-    })
+    barras_df = pd.DataFrame(
+        {"Categoria": ["Diárias", "Passagens"], "Valor": [total_diarias, total_passagem]}
+    )
     fig_barras = px.bar(
         barras_df,
         x="Categoria",
@@ -387,28 +344,36 @@ def atualizar_pagina(ano, mes, unidade):
         color="Categoria",
         color_discrete_sequence=["#003A70", "#DA291C"],
         title="Comparativo: Diárias x Passagens",
-        text="Valor"
+        text="Valor",
     )
     fig_barras.update_traces(
         texttemplate="R$ %{y:,.2f}",
         textposition="inside",
-        hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>"
+        hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>",
     )
     fig_barras.update_layout(
-        title_x=0.5,
-        showlegend=False,
-        yaxis_tickprefix="R$ ",
-        yaxis_tickformat=",.2f"
+        title_x=0.5, showlegend=False, yaxis_tickprefix="R$ ", yaxis_tickformat=",.2f"
     )
 
     # --- Resumo unidade ---
     resumo = (
         dff.groupby("Unidade (Viagem)", as_index=False)[
-            ["Valor das Diárias", "Valor da Passagem", "Valor Restituição", "Valor Seguro Viagem"]
-        ].sum()
+            [
+                "Valor das Diárias",
+                "Valor da Passagem",
+                "Valor Restituição",
+                "Valor Seguro Viagem",
+            ]
+        ]
+        .sum()
     )
 
-    for col in ["Valor das Diárias", "Valor da Passagem", "Valor Restituição", "Valor Seguro Viagem"]:
+    for col in [
+        "Valor das Diárias",
+        "Valor da Passagem",
+        "Valor Restituição",
+        "Valor Seguro Viagem",
+    ]:
         resumo[col] = resumo[col].apply(f)
 
     dados_pdf = {
@@ -421,14 +386,16 @@ def atualizar_pagina(ano, mes, unidade):
             "total_diarias": total_diarias,
             "total_seguro": total_seguro,
             "total_restit": total_restit,
-        }
+        },
     }
 
     return cards, fig_pizza, fig_barras, resumo.to_dict("records"), dados_pdf
 
+
 # ----------------------------------------
 # 6. CALLBACK — Tabela de Detalhamento
 # ----------------------------------------
+
 
 @app.callback(
     Output("tabela_detalhe", "data"),
@@ -473,9 +440,11 @@ def atualizar_detalhe(ano, mes, unidade):
 
     return dff.to_dict("records")
 
+
 # ----------------------------------------
 # 7. CALLBACK — Limpar filtros
 # ----------------------------------------
+
 
 @app.callback(
     [
@@ -489,6 +458,7 @@ def atualizar_detalhe(ano, mes, unidade):
 def limpar(n):
     return 2025, None, None
 
+
 # ----------------------------------------
 # 8. CALLBACK — Geração do PDF (sem gráficos, com cards)
 # ----------------------------------------
@@ -497,11 +467,13 @@ wrap_style = ParagraphStyle(
     name="wrap",
     fontSize=8,
     leading=10,
-    spaceAfter=4
+    spaceAfter=4,
 )
+
 
 def wrap(text):
     return Paragraph(str(text), wrap_style)
+
 
 @app.callback(
     Output("download_relatorio", "data"),
@@ -528,19 +500,23 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
     # Título
     titulo = Paragraph(
         "<b>Relatório de Gastos com Viagens</b>",
-        ParagraphStyle("titulo", fontSize=22, alignment=TA_CENTER, textColor="#0b2b57")
+        ParagraphStyle(
+            "titulo", fontSize=22, alignment=TA_CENTER, textColor="#0b2b57"
+        ),
     )
     story.append(titulo)
     story.append(Spacer(1, 0.3 * inch))
 
     # Filtros aplicados
     filtros = dados_pdf["filtros"]
-    story.append(Paragraph(
-        f"<b>Ano:</b> {filtros['ano']} — "
-        f"<b>Mês:</b> {filtros['mes'] if filtros['mes'] else 'Todos'} — "
-        f"<b>Unidade:</b> {filtros['unidade'] if filtros['unidade'] else 'Todas'}",
-        styles["Normal"]
-    ))
+    story.append(
+        Paragraph(
+            f"<b>Ano:</b> {filtros['ano']} — "
+            f"<b>Mês:</b> {filtros['mes'] if filtros['mes'] else 'Todos'} — "
+            f"<b>Unidade:</b> {filtros['unidade'] if filtros['unidade'] else 'Todas'}",
+            styles["Normal"],
+        )
+    )
     story.append(Spacer(1, 0.3 * inch))
 
     # --- CARDS NO PDF (sem gráficos) ---
@@ -559,13 +535,17 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
     ]
 
     tbl_cards = Table(cards_data, colWidths=[3.0 * inch, 3.0 * inch])
-    tbl_cards.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0b2b57")),
-    ]))
+    tbl_cards.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0b2b57")),
+            ]
+        )
+    )
     story.append(tbl_cards)
     story.append(Spacer(1, 0.4 * inch))
 
@@ -574,31 +554,31 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
 
     table1 = [["Unidade", "Diárias", "Passagem", "Restituição", "Seguro"]]
     for r in resumo:
-        table1.append([
-            wrap(r["Unidade (Viagem)"]),
-            wrap(r["Valor das Diárias"]),
-            wrap(r["Valor da Passagem"]),
-            wrap(r["Valor Restituição"]),
-            wrap(r["Valor Seguro Viagem"]),
-        ])
+        table1.append(
+            [
+                wrap(r["Unidade (Viagem)"]),
+                wrap(r["Valor das Diárias"]),
+                wrap(r["Valor da Passagem"]),
+                wrap(r["Valor Restituição"]),
+                wrap(r["Valor Seguro Viagem"]),
+            ]
+        )
 
-    col_widths1 = [
-        2.8 * inch,
-        1.0 * inch,
-        1.0 * inch,
-        1.0 * inch,
-        1.0 * inch
-    ]
+    col_widths1 = [2.8 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch]
 
     tbl1 = Table(table1, colWidths=col_widths1)
-    tbl1.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("WORDWRAP", (0, 0), (-1, -1), True),
-    ]))
+    tbl1.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("WORDWRAP", (0, 0), (-1, -1), True),
+            ]
+        )
+    )
     story.append(tbl1)
     story.append(Spacer(1, 0.5 * inch))
 
@@ -607,32 +587,32 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
 
     table2 = [["Unidade", "PCDP", "Data", "Prazo", "Urgência"]]
     for r in detalhe:
-        table2.append([
-            wrap(r["Unidade (Viagem)"]),
-            wrap(r["Número da PCDP"]),
-            wrap(r["Data Início da Viagem"]),
-            wrap(r["Custo com emissão de passagens dentro do prazo"]),
-            wrap(r["Custo com emissão de passagens em caráter de urgência"]),
-        ])
+        table2.append(
+            [
+                wrap(r["Unidade (Viagem)"]),
+                wrap(r["Número da PCDP"]),
+                wrap(r["Data Início da Viagem"]),
+                wrap(r["Custo com emissão de passagens dentro do prazo"]),
+                wrap(r["Custo com emissão de passagens em caráter de urgência"]),
+            ]
+        )
 
-    col_widths2 = [
-        2.8 * inch,
-        1.0 * inch,
-        1.0 * inch,
-        1.2 * inch,
-        1.2 * inch
-    ]
+    col_widths2 = [2.8 * inch, 1.0 * inch, 1.0 * inch, 1.2 * inch, 1.2 * inch]
 
     tbl2 = Table(table2, colWidths=col_widths2)
-    tbl2.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003A70")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("WORDWRAP", (0, 0), (-1, -1), True),
-        ("FONTSIZE", (0, 0), (-1, -1), 8)
-    ]))
+    tbl2.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003A70")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("WORDWRAP", (0, 0), (-1, -1), True),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
     story.append(tbl2)
 
     # Finaliza PDF
@@ -641,13 +621,11 @@ def gerar_pdf(n, fig_pizza, fig_barras, resumo, detalhe, dados_pdf):
 
     return dcc.send_bytes(buffer.getvalue(), "relatorio_gastos_viagens.pdf")
 
+
 # ----------------------------------------
 # 9. Rodar App
 # ----------------------------------------
 import os
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8050))
-    )
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8050)))

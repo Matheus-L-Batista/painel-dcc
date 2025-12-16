@@ -1,0 +1,126 @@
+/* Garante que a app ocupe a altura toda */
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+#_dash-app-content {
+    height: 100%;
+}
+
+/* Layout geral */
+.app-root {
+    height: 100%;
+}
+
+.app-container {
+    display: flex;
+    height: 100vh;
+}
+
+/* Barra lateral azul */
+.sidebar {
+    width: 320px;
+    padding: 15px;
+    background-color: #0b2b57;
+    color: white;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.sidebar-logo-wrapper {
+    display: flex;
+    justify-content: center;
+}
+
+.sidebar-logo {
+    width: 75%;
+    margin-bottom: 25px;
+}
+
+.sidebar-title {
+    color: white;
+    margin-top: 15px;
+}
+
+/* Botões da barra lateral */
+.sidebar-buttons {
+    margin-top: 20px;
+}
+
+.sidebar-button {
+    width: 100%;
+    margin-top: 10px;
+}
+
+/* Conteúdo principal */
+.main-content {
+    padding: 15px;
+    margin-left: 320px; /* mesma largura da sidebar */
+    width: calc(100% - 320px);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* Cards */
+.cards-container {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.card {
+    background-color: white;
+    padding: 10px 15px;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    flex: 1;
+    min-width: 0;
+}
+
+.card-title {
+    font-size: 14px;
+    color: #555;
+    text-align: center;
+}
+
+.card-value {
+    font-size: 22px;
+    font-weight: bold;
+    color: #b30000;
+    text-align: center;
+}
+
+/* Linha de gráficos */
+.charts-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 25px;
+}
+
+/* Aparência global dos dropdowns (Select.js interno) */
+.Select-control,
+.Select-menu-outer {
+    background-color: white !important;
+    color: black !important;
+}
+
+/* Aumenta ainda mais a área branca do menu */
+.Select-menu-outer {
+    border-radius: 0;
+    box-shadow: 0 0 3px rgba(0,0,0,0.3);
+}
+
+/* Texto das opções um pouco maior e espaçado */
+.Select-option {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    white-space: normal;
+}
