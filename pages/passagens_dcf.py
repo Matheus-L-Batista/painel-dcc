@@ -1,7 +1,5 @@
 # pages/passagens_dcf.py
 
-# Painel: Gastos com Viagens (Passagens DCF)
-
 import dash
 from dash import html, dcc, Input, Output, State, dash_table
 import plotly.express as px
@@ -15,7 +13,8 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib import colors  # [file:6]
+from reportlab.lib import colors
+
 
 # --------------------------------------------------
 # Registro da página
@@ -27,6 +26,7 @@ dash.register_page(
     title="Gastos com Viagens",
 )
 
+
 # --------------------------------------------------
 # URL da planilha
 # --------------------------------------------------
@@ -34,7 +34,8 @@ URL = (
     "https://docs.google.com/spreadsheets/d/"
     "1QJFSLpVO0bI-bsNdgiTWl8rOh1_h6_B7Q8F_SW66_yc/"
     "gviz/tq?tqx=out:csv&sheet=Passagens%20-%20DCF"
-)  # [file:6]
+)
+
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
@@ -72,7 +73,8 @@ def carregar_dados():
 
     df["Ano"] = df["Data Início da Viagem"].dt.year
     df["Mes"] = df["Data Início da Viagem"].dt.month
-    return df  # [file:6]
+    return df
+
 
 df = carregar_dados()
 ANO_PADRAO = int(sorted(df["Ano"].dropna().unique())[-1])
@@ -87,12 +89,14 @@ dropdown_style = {
     "width": "100%",
     "marginBottom": "10px",
     "whiteSpace": "normal",
-}  # [file:6]
+}
+
 
 # ----------------------------------------
 # Layout (conteúdo da página)
 # ----------------------------------------
 layout = html.Div(
+    # não definir overflow aqui para evitar segundo scroll
     children=[
         html.H2(
             "Gastos com Viagens",
@@ -103,7 +107,12 @@ layout = html.Div(
             children=[
                 html.H3("Filtros", className="sidebar-title"),
                 html.Div(
-                    style={"display": "flex", "flexWrap": "wrap", "gap": "10px"},
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                        "alignItems": "flex-start",  # evita empurrar o resto para baixo
+                    },
                     children=[
                         html.Div(
                             style={"minWidth": "140px", "flex": "0 0 160px"},
@@ -119,7 +128,7 @@ layout = html.Div(
                                     clearable=False,
                                     style=dropdown_style,
                                     optionHeight=40,
-                                    maxHeight=400,
+                                    maxHeight=300,
                                 ),
                             ],
                         ),
@@ -138,12 +147,16 @@ layout = html.Div(
                                     clearable=True,
                                     style=dropdown_style,
                                     optionHeight=40,
-                                    maxHeight=400,
+                                    maxHeight=300,
                                 ),
                             ],
                         ),
                         html.Div(
-                            style={"minWidth": "240px", "flex": "1"},
+                            style={
+                                "minWidth": "240px",
+                                "flex": "1 1 280px",
+                                "maxWidth": "480px",
+                            },
                             children=[
                                 html.Label("Unidade (Viagem)"),
                                 dcc.Dropdown(
@@ -155,9 +168,14 @@ layout = html.Div(
                                     value=None,
                                     placeholder="Todas",
                                     clearable=True,
-                                    style=dropdown_style,
-                                    optionHeight=50,
-                                    maxHeight=400,
+                                    style={
+                                        **dropdown_style,
+                                        # altura visual do componente fechado:
+                                        "minHeight": "38px",
+                                        "maxHeight": "42px",
+                                    },
+                                    optionHeight=35,
+                                    maxHeight=250,
                                 ),
                             ],
                         ),
@@ -190,9 +208,20 @@ layout = html.Div(
         ),
         html.Div(
             className="charts-row",
+            style={
+                "display": "flex",
+                "flexWrap": "wrap",
+                "gap": "10px",
+            },
             children=[
-                dcc.Graph(id="grafico_pizza_passagens", style={"width": "50%"}),
-                dcc.Graph(id="grafico_barras_passagens", style={"width": "50%"}),
+                dcc.Graph(
+                    id="grafico_pizza_passagens",
+                    style={"flex": "1 1 300px", "minWidth": "280px"},
+                ),
+                dcc.Graph(
+                    id="grafico_barras_passagens",
+                    style={"flex": "1 1 300px", "minWidth": "280px"},
+                ),
             ],
         ),
         html.H4("Resumo por Unidade"),
@@ -211,7 +240,12 @@ layout = html.Div(
                 {"name": "Gasto com Seguro Viagem", "id": "Valor Seguro Viagem"},
             ],
             data=[],
-            style_table={"overflowX": "auto"},
+            # scroll só aqui
+            style_table={
+                "overflowX": "auto",
+                "overflowY": "auto",
+                "maxHeight": "350px",
+            },  # [web:11]
             style_cell={"textAlign": "center", "padding": "4px"},
             style_header={
                 "fontWeight": "bold",
@@ -240,7 +274,11 @@ layout = html.Div(
                 },
             ],
             data=[],
-            style_table={"overflowX": "auto"},
+            style_table={
+                "overflowX": "auto",
+                "overflowY": "auto",
+                "maxHeight": "350px",
+            },  # [web:11]
             style_cell={"textAlign": "center", "padding": "4px"},
             style_header={
                 "fontWeight": "bold",
@@ -249,7 +287,8 @@ layout = html.Div(
         ),
         dcc.Store(id="store_graficos_passagens"),
     ],
-)  # [file:6]
+)
+
 
 # ----------------------------------------
 # 5. CALLBACK — Atualização geral
@@ -347,7 +386,6 @@ def atualizar_pagina(ano, mes, unidade):
         yaxis_tickformat=",.2f",
     )
 
-    # ---- groupby corrigido ----
     resumo = dff.groupby(
         "Unidade (Viagem)", as_index=False
     )[
@@ -380,7 +418,8 @@ def atualizar_pagina(ano, mes, unidade):
         },
     }
 
-    return cards, fig_pizza, fig_barras, resumo.to_dict("records"), dados_pdf  # [file:6]
+    return cards, fig_pizza, fig_barras, resumo.to_dict("records"), dados_pdf
+
 
 # ----------------------------------------
 # 6. CALLBACK — Tabela de Detalhamento
@@ -421,7 +460,8 @@ def atualizar_detalhe(ano, mes, unidade):
         "Custo com emissão de passagens em caráter de urgência"
     ].apply(f)
 
-    return dff.to_dict("records")  # [file:6]
+    return dff.to_dict("records")
+
 
 # ----------------------------------------
 # 7. CALLBACK — Limpar filtros
@@ -434,7 +474,8 @@ def atualizar_detalhe(ano, mes, unidade):
     prevent_initial_call=True,
 )
 def limpar(n):
-    return ANO_PADRAO, None, None  # [file:6]
+    return ANO_PADRAO, None, None
+
 
 # ----------------------------------------
 # 8. CALLBACK — Geração do PDF
@@ -446,8 +487,10 @@ wrap_style = ParagraphStyle(
     spaceAfter=4,
 )
 
+
 def wrap(text):
     return Paragraph(str(text), wrap_style)
+
 
 @dash.callback(
     Output("download_relatorio_passagens", "data"),
