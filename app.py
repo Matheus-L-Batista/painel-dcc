@@ -4,7 +4,7 @@ from dash import Dash, html, dcc
 app = Dash(__name__, use_pages=True)
 server = app.server
 
-# Itens do menu (links para as páginas da pasta pages/)
+# Itens do menu (links para as páginas)
 menu_links = [
     {"label": "Passagens DCF", "href": "/passagens-dcf"},
     {"label": "Pagamentos Efetivados", "href": "/pagamentos"},
@@ -17,7 +17,6 @@ menu_links = [
 app.layout = html.Div(
     className="app-root",
     children=[
-        # Localização da URL para saber qual item está ativo
         dcc.Location(id="url"),
         html.Div(
             className="app-container",
@@ -33,7 +32,10 @@ app.layout = html.Div(
                                     src="/assets/logo_unifei.png",
                                     className="sidebar-logo",
                                 ),
-                                html.H2("Painéis", className="sidebar-title"),
+                                html.H2(
+                                    "Painéis",
+                                    className="sidebar-title",
+                                ),
                             ],
                         ),
                         html.Div(
@@ -42,17 +44,21 @@ app.layout = html.Div(
                         ),
                     ],
                 ),
+
                 # CONTEÚDO PRINCIPAL
                 html.Div(
                     className="main-content",
-                    children=dash.page_container,
+                    children=html.Div(
+                        className="page-wrapper",
+                        children=dash.page_container,
+                    ),
                 ),
             ],
         ),
     ],
 )
 
-# Callback para montar o menu e deixar o item selecionado em branco
+# Callback para montar o menu e destacar o item ativo
 @app.callback(
     dash.Output("sidebar-menu", "children"),
     dash.Input("url", "pathname"),
@@ -61,7 +67,11 @@ def atualizar_menu(pathname):
     itens = []
     for m in menu_links:
         active = pathname == m["href"]
-        class_name = "sidebar-button sidebar-button-active" if active else "sidebar-button"
+        class_name = (
+            "sidebar-button sidebar-button-active"
+            if active
+            else "sidebar-button"
+        )
         itens.append(
             dcc.Link(
                 m["label"],
