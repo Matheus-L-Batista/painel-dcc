@@ -1,8 +1,11 @@
 import dash
 from dash import Dash, html, dcc
 
-
-app = Dash(__name__, use_pages=True)
+app = Dash(
+    __name__,
+    use_pages=True,
+    suppress_callback_exceptions=True,  # boa prática
+)
 server = app.server
 
 
@@ -20,15 +23,18 @@ app.layout = html.Div(
     className="app-root",
     children=[
         dcc.Location(id="url"),
+
+        # 🔁 Atualização automática (1x por hora)
         dcc.Interval(
             id="interval-atualizacao",
-            interval=60 * 60 * 1000,  # 1 hora
+            interval=60 * 60 * 1000,
             n_intervals=0,
         ),
+
         html.Div(
             className="app-container",
             children=[
-                # SIDEBAR (AGORA FLEX, NÃO FIXA)
+                # SIDEBAR
                 html.Div(
                     className="sidebar",
                     children=[

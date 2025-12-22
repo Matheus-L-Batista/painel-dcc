@@ -297,6 +297,12 @@ layout = html.Div(
                 "backgroundColor": "#f0f0f0",
             },
         ),
+        # Interval para atualização periódica do df_base
+       # dcc.Interval(
+       #     id="interval-atualizacao",
+       #     interval=5 * 60 * 1000,  # a cada 5 minutos
+       #     n_intervals=0,
+       # ),
         dcc.Store(id="store_graficos_passagens"),
     ],
 )
@@ -314,13 +320,18 @@ layout = html.Div(
     Input("filtro_ano_passagens", "value"),
     Input("filtro_mes_passagens", "value"),
     Input("filtro_unidade_passagens", "value"),
-    # 🔧 C) Interval como Input extra
     Input("interval-atualizacao", "n_intervals"),
 )
 def atualizar_pagina(ano, mes, unidade, n_intervals):
-    # Atualiza o DF base apenas quando o intervalo dispara
-    df = carregar_dados() if n_intervals is not None else df_base
-    dff = df.copy()
+    global df_base
+
+    # Atualiza df_base somente em horário permitido (08h–18h)
+    hora = datetime.now().hour
+    if 8 <= hora < 18:
+        if n_intervals is not None:
+            df_base = carregar_dados()
+
+    dff = df_base.copy()
 
     if ano:
         dff = dff[dff["Ano"] == ano]
@@ -455,12 +466,17 @@ def atualizar_pagina(ano, mes, unidade, n_intervals):
     Input("filtro_ano_passagens", "value"),
     Input("filtro_mes_passagens", "value"),
     Input("filtro_unidade_passagens", "value"),
-    # também atualiza com o intervalo
     Input("interval-atualizacao", "n_intervals"),
 )
 def atualizar_detalhe(ano, mes, unidade, n_intervals):
-    df = carregar_dados() if n_intervals is not None else df_base
-    dff = df.copy()
+    global df_base
+
+    hora = datetime.now().hour
+    if 8 <= hora < 18:
+        if n_intervals is not None:
+            df_base = carregar_dados()
+
+    dff = df_base.copy()
 
     if ano:
         dff = dff[dff["Ano"] == ano]

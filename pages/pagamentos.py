@@ -24,7 +24,6 @@ dash.register_page(
     title="Pagamentos Efetivados",
 )
 
-
 URL = (
     "https://docs.google.com/spreadsheets/d/"
     "1KEEohPamH36URHpPjFjpVmSNOoK3429erayoPv6fcDo/"
@@ -282,6 +281,12 @@ layout = html.Div(
                 "textAlign": "center",
             },
         ),
+        # Interval para atualização periódica do df_base
+       # dcc.Interval(
+       #     id="interval-atualizacao",
+       #     interval=5 * 60 * 1000,  # a cada 5 minutos
+       #     n_intervals=0,
+       # ),
         dcc.Store(id="store_dados_pagamentos"),
     ],
 )
@@ -299,13 +304,18 @@ layout = html.Div(
     Input("filtro_mes_pagamentos", "value"),
     Input("filtro_lista_pagamentos", "value"),
     Input("filtro_fonte_pagamentos", "value"),
-    # 🔧 C) Interval como Input extra
     Input("interval-atualizacao", "n_intervals"),
 )
 def atualizar_tabela(ano, mes, lista, fonte, n_intervals):
-    # Atualiza df apenas quando o intervalo dispara
-    df = carregar_dados() if n_intervals is not None else df_base
-    dff = df.copy()
+    global df_base
+
+    # Atualiza df_base somente em horário permitido (08h–18h)
+    hora = datetime.now().hour
+    if 8 <= hora < 18:
+        if n_intervals is not None:
+            df_base = carregar_dados()
+
+    dff = df_base.copy()
 
     if ano:
         dff = dff[dff["Ano"] == ano]

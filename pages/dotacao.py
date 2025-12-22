@@ -1,8 +1,6 @@
 # pages/dotacao.py
 
-
 # Painel: Dotação Atualizada e Destaques Recebidos
-
 
 import dash
 from dash import html, dcc, Input, Output, State, dash_table
@@ -14,7 +12,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib import colors  # [file:4]
+from reportlab.lib import colors
 import datetime as dt
 
 
@@ -56,7 +54,7 @@ def carregar_dados():
 
     df["DOTACAO ATUALIZADA_VAL"] = df["DOTACAO ATUALIZADA"].apply(conv_moeda)
     df["DESTAQUE RECEBIDO_VAL"] = df["DESTAQUE RECEBIDO"].apply(conv_moeda)
-    return df  # [file:4]
+    return df
 
 
 # >>> DF base em vez de df global
@@ -252,6 +250,12 @@ layout = html.Div(
                 "color": "white",
             },
         ),
+        # Intervalo para atualização periódica dos dados
+       # dcc.Interval(
+       #     id="interval-atualizacao",
+       #     interval=5 * 60 * 1000,  # a cada 5 minutos
+       #     n_intervals=0,
+       # ),
         dcc.Store(id="store_pdf_dotacao"),
     ],
 )

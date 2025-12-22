@@ -354,6 +354,12 @@ layout = html.Div(
                 "color": "white",
             },
         ),
+        # Interval de atualização compartilhado com outras páginas
+       # dcc.Interval(
+       #     id="interval-atualizacao",
+       #     interval=5 * 60 * 1000,  # a cada 5 minutos
+       #     n_intervals=0,
+       # ),
         dcc.Store(id="store_pdf_ted"),
     ],
 )
@@ -375,14 +381,14 @@ layout = html.Div(
     Input("filtro_fonte_ted", "value"),
     Input("filtro_grupo_ted", "value"),
     Input("filtro_nat_ted", "value"),
-    Input("interval-atualizacao", "n_intervals"),  # novo Input
+    Input("interval-atualizacao", "n_intervals"),
 )
 def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat, n_intervals):
     global df_base
 
-    # Atualiza o df_base somente em um horário permitido (exemplo: 08h–20h)
-    agora = dt.datetime.now().time()
-    if dt.time(8, 0) <= agora <= dt.time(20, 0):
+    # Atualiza o df_base somente em horário permitido (exemplo: 08h–18h)
+    hora = dt.datetime.now().hour
+    if 8 <= hora < 18:
         if n_intervals is not None:
             df_base = carregar_dados()
 
@@ -713,9 +719,9 @@ def gerar_pdf(n, dados_pdf):
     table_data = [
         [
             "UO",
-            "Fonte<br>Recursos",
-            "Grupo<br>Despesa",
-            "Natureza<br>Despesa",
+            "Fonte\nRecursos",
+            "Grupo\nDespesa",
+            "Natureza\nDespesa",
             "RP N.P.",
             "Empenha.",
             "Liquida.",
@@ -734,24 +740,21 @@ def gerar_pdf(n, dados_pdf):
                 wrap(r["DESPESAS INSCRITAS EM RP NAO PROCESSADOS"]),
                 wrap(r["DESPESAS EMPENHADAS (CONTROLE EMPENHO)"]),
                 wrap(r["DESPESAS LIQUIDADAS (CONTROLE EMPENHO)"]),
-                wrap(
-                    r["DESPESAS LIQUIDADAS A PAGAR(CONTROLE EMPENHO)"]
-                ),
+                wrap(r["DESPESAS LIQUIDADAS A PAGAR(CONTROLE EMPENHO)"]),
                 wrap(r["DESPESAS PAGAS (CONTROLE EMPENHO)"]),
             ]
         )
 
-    # Larguras otimizadas para landscape
     col_widths = [
-        1.2 * inch,  # UO
-        1.4 * inch,  # Fonte Recursos
-        1.1 * inch,  # Grupo Desp
-        1.3 * inch,  # Natureza Desp
-        0.75 * inch, # RP N.P.
-        0.75 * inch, # Empenha.
-        0.75 * inch, # Liquida.
-        0.8 * inch,  # Liq. Pagar
-        0.75 * inch, # Pagas
+        1.2 * inch,
+        1.4 * inch,
+        1.1 * inch,
+        1.3 * inch,
+        0.75 * inch,
+        0.75 * inch,
+        0.75 * inch,
+        0.8 * inch,
+        0.75 * inch,
     ]
 
     tbl = Table(table_data, colWidths=col_widths)

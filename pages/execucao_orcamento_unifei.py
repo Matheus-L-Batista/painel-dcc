@@ -326,6 +326,12 @@ layout = html.Div(
                 "color": "white",
             },
         ),
+        # Intervalo para atualizar o df_base
+       # dcc.Interval(
+       #     id="interval-atualizacao",
+       #     interval=5 * 60 * 1000,  # 5 minutos
+       #     n_intervals=0,
+       # ),
         dcc.Store(id="store_pdf_unifei"),
     ],
 )
@@ -346,14 +352,14 @@ layout = html.Div(
     Input("filtro_fonte_unifei", "value"),
     Input("filtro_grupo_unifei", "value"),
     Input("filtro_nat_unifei", "value"),
-    Input("interval-atualizacao", "n_intervals"),  # novo Input
+    Input("interval-atualizacao", "n_intervals"),
 )
 def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat, n_intervals):
     global df_base
 
-    # Atualiza o df_base somente em horário permitido (exemplo: 08h–20h)
-    agora = dt.datetime.now().time()
-    if dt.time(8, 0) <= agora <= dt.time(20, 0):
+    # Atualiza o df_base somente em horário permitido (exemplo: 08h–18h)
+    hora = dt.datetime.now().hour
+    if 8 <= hora < 18:
         if n_intervals is not None:
             df_base = carregar_dados()
 
