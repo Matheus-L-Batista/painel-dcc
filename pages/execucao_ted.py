@@ -6,6 +6,7 @@ import dash
 from dash import html, dcc, Input, Output, State, dash_table
 import pandas as pd
 import plotly.express as px
+import numpy as np
 from io import BytesIO
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.units import inch
@@ -18,7 +19,8 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib import colors  # [file:7]
+from reportlab.lib import colors
+
 
 # --------------------------------------------------
 # Registro da página
@@ -30,6 +32,7 @@ dash.register_page(
     title="Execução do Orçamento - TED",
 )
 
+
 # --------------------------------------------------
 # URL da planilha (TED)
 # --------------------------------------------------
@@ -38,6 +41,7 @@ URL = (
     "1MkiWDH-MBnLeSUlqV91qjzCVRTlTAVh9xYooENJ151o/"
     "gviz/tq?tqx=out:csv&sheet=Execucao%20do%20Orcamento%20TED"
 )
+
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
@@ -68,7 +72,8 @@ def carregar_dados():
     for c in col_valores:
         df[c + "_VAL"] = df[c].apply(conv_moeda)
 
-    return df  # [file:7]
+    return df
+
 
 df = carregar_dados()
 ANO_PADRAO = int(sorted(df["Ano"].dropna().unique())[-1])
@@ -78,6 +83,7 @@ dropdown_style = {
     "marginBottom": "10px",
     "whiteSpace": "normal",
 }
+
 
 # --------------------------------------------------
 # Layout
@@ -92,8 +98,15 @@ layout = html.Div(
             style={"marginBottom": "20px"},
             children=[
                 html.H3("Filtros", className="sidebar-title"),
+
+                # 1ª linha: UO, UG, Ano, Mês
                 html.Div(
-                    style={"display": "flex", "flexWrap": "wrap", "gap": "10px"},
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                        "marginBottom": "8px",
+                    },
                     children=[
                         html.Div(
                             style={"minWidth": "220px", "flex": "1"},
@@ -172,6 +185,18 @@ layout = html.Div(
                                 ),
                             ],
                         ),
+                    ],
+                ),
+
+                # 2ª linha: Fonte, Grupo, Natureza + botões
+                html.Div(
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                        "alignItems": "flex-end",
+                    },
+                    children=[
                         html.Div(
                             style={"minWidth": "220px", "flex": "1"},
                             children=[
@@ -229,25 +254,28 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                    ],
-                ),
-                html.Div(
-                    style={"marginTop": "10px"},
-                    children=[
-                        html.Button(
-                            "Limpar filtros",
-                            id="btn_limpar_filtros_ted",
-                            n_clicks=0,
-                            className="filtros-button",
+                        html.Div(
+                            style={
+                                "display": "flex",
+                                "gap": "10px",
+                                "marginTop": "24px",
+                            },
+                            children=[
+                                html.Button(
+                                    "Limpar filtros",
+                                    id="btn_limpar_filtros_ted",
+                                    n_clicks=0,
+                                    className="filtros-button",
+                                ),
+                                html.Button(
+                                    "Baixar Relatório PDF",
+                                    id="btn_download_relatorio_ted",
+                                    n_clicks=0,
+                                    className="filtros-button",
+                                ),
+                                dcc.Download(id="download_relatorio_ted"),
+                            ],
                         ),
-                        html.Button(
-                            "Baixar Relatório PDF",
-                            id="btn_download_relatorio_ted",
-                            n_clicks=0,
-                            className="filtros-button",
-                            style={"marginLeft": "10px"},
-                        ),
-                        dcc.Download(id="download_relatorio_ted"),
                     ],
                 ),
             ],
@@ -321,6 +349,7 @@ layout = html.Div(
         dcc.Store(id="store_pdf_ted"),
     ],
 )
+
 
 # --------------------------------------------------
 # Callback principal
@@ -427,6 +456,9 @@ def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat):
     ] + monetarias
     dff_display = dff_display[colunas_tabela]
 
+    # -----------------------------
+    # GRÁFICO DE BARRAS POR GRUPO
+    # -----------------------------
     if not dff.empty:
         grp_grupo = (
             dff.groupby("GRUPO DESP", as_index=False)[
@@ -438,6 +470,14 @@ def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat):
                 ascending=False,
             )
         )
+
+        valores = grp_grupo["DESPESAS EMPENHADAS (CONTROLE EMPENHO)_VAL"].values
+        limiar = 0.2 * valores.max() if valores.size > 0 else 0
+        textpositions = [
+            "inside" if v >= limiar else "outside"
+            for v in valores
+        ]
+
         fig_barras = px.bar(
             grp_grupo,
             x="GRUPO DESP",
@@ -446,19 +486,19 @@ def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat):
         )
         fig_barras.update_traces(
             marker_color="#003A70",
-            text=[fmt(v) for v in grp_grupo[
-                "DESPESAS EMPENHADAS (CONTROLE EMPENHO)_VAL"
-            ]],
-            textposition="inside",
+            text=[fmt(v) for v in valores],
+            textposition=textpositions,
             insidetextanchor="middle",
             hovertemplate="Grupo=%{x}<br>Empenhadas=R$ %{y:,.2f}",
+            cliponaxis=False,
         )
         fig_barras.update_layout(
             xaxis_title="Grupo de Despesa",
             yaxis_title="Empenhadas (R$)",
             yaxis_tickprefix="R$ ",
             yaxis_tickformat=",.2f",
-            title_y=0.95,
+            title_x=0.5,
+            title_y=0.9,
             uniformtext_minsize=10,
             uniformtext_mode="hide",
         )
@@ -466,7 +506,11 @@ def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat):
         fig_barras = px.bar(
             title="Sem dados para os filtros selecionados"
         )
+        fig_barras.update_layout(title_x=0.5, title_y=0.9)
 
+    # -----------------------------
+    # GRÁFICO DE PIZZA STATUS
+    # -----------------------------
     if total_emp + total_liq + total_pagas > 0:
         df_pizza = pd.DataFrame(
             {
@@ -494,12 +538,16 @@ def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat):
             legend_title="Status",
             legend_orientation="h",
             legend_y=-0.1,
-            title_y=0.95,
+            legend_x=0.5,
+            legend_xanchor="center",
+            title_x=0.5,
+            title_y=0.9,
         )
     else:
         fig_pizza = px.pie(
             title="Sem valores para Empenhadas, Liquidadas e Pagas"
         )
+        fig_pizza.update_layout(title_x=0.5, title_y=0.9)
 
     dados_pdf = {
         "tabela": dff_display.to_dict("records"),
@@ -523,6 +571,7 @@ def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat):
 
     return dff_display.to_dict("records"), cards, fig_barras, fig_pizza, dados_pdf
 
+
 # --------------------------------------------------
 # Limpar filtros
 # --------------------------------------------------
@@ -540,6 +589,7 @@ def atualizar_painel(uo, ugexec, ano, mes, fonte, grupo, nat):
 def limpar_filtros(n):
     return None, None, ANO_PADRAO, None, None, None, None
 
+
 # --------------------------------------------------
 # PDF
 # --------------------------------------------------
@@ -551,8 +601,10 @@ wrap_style = ParagraphStyle(
     alignment=TA_LEFT,
 )
 
+
 def wrap(text):
     return Paragraph(str(text)[:200], wrap_style)
+
 
 @dash.callback(
     Output("download_relatorio_ted", "data"),

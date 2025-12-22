@@ -6,13 +6,15 @@ import dash
 from dash import html, dcc, Input, Output, State, dash_table
 import pandas as pd
 import plotly.express as px
+import numpy as np
 from io import BytesIO
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib import colors  # [file:9]
+from reportlab.lib import colors
+
 
 # --------------------------------------------------
 # Registro da página
@@ -24,6 +26,7 @@ dash.register_page(
     title="Execução do Orçamento - UNIFEI",
 )
 
+
 # --------------------------------------------------
 # URL da planilha (UNIFEI)
 # --------------------------------------------------
@@ -32,6 +35,7 @@ URL = (
     "1MkiWDH-MBnLeSUlqV91qjzCVRTlTAVh9xYooENJ151o/"
     "gviz/tq?tqx=out:csv&sheet=Execucao%20do%20Orcamento%20Unifei"
 )
+
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
@@ -62,7 +66,8 @@ def carregar_dados():
     for c in col_valores:
         df[c + "_VAL"] = df[c].apply(conv_moeda)
 
-    return df  # [file:9]
+    return df
+
 
 df = carregar_dados()
 ANO_PADRAO = int(sorted(df["Ano"].dropna().unique())[-1])
@@ -72,6 +77,7 @@ dropdown_style = {
     "marginBottom": "10px",
     "whiteSpace": "normal",
 }
+
 
 # --------------------------------------------------
 # Layout
@@ -86,8 +92,15 @@ layout = html.Div(
             style={"marginBottom": "20px"},
             children=[
                 html.H3("Filtros", className="sidebar-title"),
+
+                # 1ª linha: UG, Mês, Ano
                 html.Div(
-                    style={"display": "flex", "flexWrap": "wrap", "gap": "10px"},
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                        "marginBottom": "8px",
+                    },
                     children=[
                         html.Div(
                             style={"minWidth": "220px", "flex": "1"},
@@ -147,6 +160,18 @@ layout = html.Div(
                                 ),
                             ],
                         ),
+                    ],
+                ),
+
+                # 2ª linha: Fonte, Grupo, Natureza + botões
+                html.Div(
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                        "alignItems": "flex-end",
+                    },
+                    children=[
                         html.Div(
                             style={"minWidth": "220px", "flex": "1"},
                             children=[
@@ -206,25 +231,28 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                    ],
-                ),
-                html.Div(
-                    style={"marginTop": "10px"},
-                    children=[
-                        html.Button(
-                            "Limpar filtros",
-                            id="btn_limpar_filtros_unifei",
-                            n_clicks=0,
-                            className="filtros-button",
+                        html.Div(
+                            style={
+                                "display": "flex",
+                                "gap": "10px",
+                                "marginTop": "24px",
+                            },
+                            children=[
+                                html.Button(
+                                    "Limpar filtros",
+                                    id="btn_limpar_filtros_unifei",
+                                    n_clicks=0,
+                                    className="filtros-button",
+                                ),
+                                html.Button(
+                                    "Baixar Relatório PDF",
+                                    id="btn_download_relatorio_unifei",
+                                    n_clicks=0,
+                                    className="filtros-button",
+                                ),
+                                dcc.Download(id="download_relatorio_unifei"),
+                            ],
                         ),
-                        html.Button(
-                            "Baixar Relatório PDF",
-                            id="btn_download_relatorio_unifei",
-                            n_clicks=0,
-                            className="filtros-button",
-                            style={"marginLeft": "10px"},
-                        ),
-                        dcc.Download(id="download_relatorio_unifei"),
                     ],
                 ),
             ],
@@ -295,6 +323,7 @@ layout = html.Div(
         dcc.Store(id="store_pdf_unifei"),
     ],
 )
+
 
 # --------------------------------------------------
 # Callback principal
@@ -377,6 +406,9 @@ def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat):
     ] + monetarias
     dff_display = dff_display[colunas_tabela]
 
+    # -----------------------------
+    # GRÁFICO DE BARRAS POR GRUPO
+    # -----------------------------
     if not dff.empty:
         grp_grupo = (
             dff.groupby("GRUPO DESP", as_index=False)[
@@ -388,6 +420,14 @@ def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat):
                 ascending=False,
             )
         )
+
+        valores = grp_grupo["DESPESAS EMPENHADAS (CONTROLE EMPENHO)_VAL"].values
+        limiar = 0.2 * valores.max() if valores.size > 0 else 0
+        textpositions = [
+            "inside" if v >= limiar else "outside"
+            for v in valores
+        ]
+
         fig_barras = px.bar(
             grp_grupo,
             x="GRUPO DESP",
@@ -396,19 +436,19 @@ def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat):
         )
         fig_barras.update_traces(
             marker_color="#003A70",
-            text=[fmt(v) for v in grp_grupo[
-                "DESPESAS EMPENHADAS (CONTROLE EMPENHO)_VAL"
-            ]],
-            textposition="inside",
+            text=[fmt(v) for v in valores],
+            textposition=textpositions,
             insidetextanchor="middle",
             hovertemplate="Grupo=%{x}<br>Empenhadas=R$ %{y:,.2f}",
+            cliponaxis=False,
         )
         fig_barras.update_layout(
             xaxis_title="Grupo de Despesa",
             yaxis_title="Empenhadas (R$)",
             yaxis_tickprefix="R$ ",
             yaxis_tickformat=",.2f",
-            title_y=0.95,
+            title_x=0.5,
+            title_y=0.9,
             uniformtext_minsize=10,
             uniformtext_mode="hide",
         )
@@ -416,7 +456,11 @@ def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat):
         fig_barras = px.bar(
             title="Sem dados para os filtros selecionados"
         )
+        fig_barras.update_layout(title_x=0.5, title_y=0.9)
 
+    # -----------------------------
+    # GRÁFICO DE PIZZA STATUS
+    # -----------------------------
     if total_emp + total_liq + total_pagas > 0:
         df_pizza = pd.DataFrame(
             {
@@ -444,12 +488,16 @@ def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat):
             legend_title="Status",
             legend_orientation="h",
             legend_y=-0.1,
-            title_y=0.95,
+            legend_x=0.5,
+            legend_xanchor="center",
+            title_x=0.5,
+            title_y=0.9,
         )
     else:
         fig_pizza = px.pie(
             title="Sem valores para Empenhadas, Liquidadas e Pagas"
         )
+        fig_pizza.update_layout(title_x=0.5, title_y=0.9)
 
     dados_pdf = {
         "tabela": dff_display.to_dict("records"),
@@ -472,6 +520,7 @@ def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat):
 
     return dff_display.to_dict("records"), cards, fig_barras, fig_pizza, dados_pdf
 
+
 # --------------------------------------------------
 # Limpar filtros
 # --------------------------------------------------
@@ -488,6 +537,7 @@ def atualizar_painel(ug_exec, mes, ano, fonte, grupo, nat):
 def limpar_filtros(n):
     return None, None, ANO_PADRAO, None, None, None
 
+
 # --------------------------------------------------
 # PDF
 # --------------------------------------------------
@@ -499,8 +549,10 @@ wrap_style = ParagraphStyle(
     alignment=TA_LEFT,
 )
 
+
 def wrap(text):
     return Paragraph(str(text)[:200], wrap_style)
+
 
 @dash.callback(
     Output("download_relatorio_unifei", "data"),
@@ -516,53 +568,58 @@ def gerar_pdf(n, dados_pdf):
     doc = SimpleDocTemplate(
         buffer,
         pagesize=landscape(letter),
-        topMargin=0.5 * inch,
-        bottomMargin=0.5 * inch,
+        topMargin=0.3 * inch,
+        bottomMargin=0.3 * inch,
+        leftMargin=0.3 * inch,
+        rightMargin=0.3 * inch,
     )
     styles = getSampleStyleSheet()
     story = []
 
+    # Título
     titulo = Paragraph(
         "Relatório de Execução do Orçamento - UNIFEI",
         ParagraphStyle(
-            "titulo", fontSize=18, alignment=TA_CENTER, textColor="#0b2b57"
+            "titulo", fontSize=14, alignment=TA_CENTER, textColor="#0b2b57"
         ),
     )
     story.append(titulo)
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(Spacer(1, 0.08 * inch))
 
+    # Filtros
     f = dados_pdf["filtros"]
     story.append(
         Paragraph(
-            f"UG Executora: {f['ug_exec'] if f['ug_exec'] else 'Todas'} | "
+            f"UG: {f['ug_exec'] if f['ug_exec'] else 'Todas'} | "
             f"Mês: {f['mes'] if f['mes'] else 'Todos'} | "
-            f"Ano: {f['ano'] if f['ano'] else 'Todos'}",
-            ParagraphStyle("filtros", fontSize=7, alignment=TA_LEFT),
+            f"Ano: {f['ano'] if f['ano'] else 'Todos'} | "
+            f"Fonte: {f['fonte'] if f['fonte'] else 'Todas'}",
+            ParagraphStyle("filtros", fontSize=6, alignment=TA_LEFT),
         )
     )
     story.append(
         Paragraph(
-            f"Fonte: {f['fonte'] if f['fonte'] else 'Todas'} | "
             f"Grupo: {f['grupo'] if f['grupo'] else 'Todos'} | "
             f"Natureza: {f['nat'] if f['nat'] else 'Todas'}",
-            ParagraphStyle("filtros", fontSize=7, alignment=TA_LEFT),
+            ParagraphStyle("filtros", fontSize=6, alignment=TA_LEFT),
         )
     )
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(Spacer(1, 0.08 * inch))
 
+    # Cards/Totais
     def fmt(v):
         return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     tot = dados_pdf["totais"]
     cards_data = [
-        ["RP Não Processados", fmt(tot["rp"])],
+        ["RP Não Proc.", fmt(tot["rp"])],
         ["Empenhadas", fmt(tot["emp"])],
         ["Liquidadas", fmt(tot["liq"])],
-        ["Liquidadas a Pagar", fmt(tot["liq_pagar"])],
+        ["Liq. a Pagar", fmt(tot["liq_pagar"])],
         ["Pagas", fmt(tot["pagas"])],
     ]
 
-    tbl_cards = Table(cards_data, colWidths=[3.0 * inch, 3.0 * inch])
+    tbl_cards = Table(cards_data, colWidths=[1.5 * inch, 1.5 * inch])
     tbl_cards.setStyle(
         TableStyle(
             [
@@ -571,76 +628,93 @@ def gerar_pdf(n, dados_pdf):
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
                 ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0b2b57")),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ]
         )
     )
     story.append(tbl_cards)
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, 0.1 * inch))
+
+    # Tabela detalhada
+    wrap_style_5 = ParagraphStyle(
+        name="wrap5",
+        fontSize=5,
+        leading=6,
+        spaceAfter=0,
+        alignment=TA_LEFT,
+    )
+
+    def wrap_small(text):
+        return Paragraph(str(text)[:150], wrap_style_5)
 
     table_data = [
         [
             "UG Executora",
             "Fonte Recursos",
-            "Grupo Despesa",
-            "Natureza Despesa",
-            "RP Não Proc.",
-            "Empenhadas",
-            "Liquidadas",
-            "Liq. a Pagar",
+            "Grupo Desp.",
+            "Natureza Desp.",
+            "RP N.P.",
+            "Empenha.",
+            "Liquida.",
+            "Liq. Pagar",
             "Pagas",
         ]
     ]
+    
     for r in dados_pdf["tabela"]:
         table_data.append(
             [
-                wrap(r["UG Executora"]),
-                wrap(r["Fonte Recursos Detalhada"]),
-                wrap(r["GRUPO DESP"]),
-                wrap(r["Natureza Despesa"]),
-                wrap(r["DESPESAS INSCRITAS EM RP NAO PROCESSADOS"]),
-                wrap(r["DESPESAS EMPENHADAS (CONTROLE EMPENHO)"]),
-                wrap(r["DESPESAS LIQUIDADAS (CONTROLE EMPENHO)"]),
-                wrap(
-                    r["DESPESAS LIQUIDADAS A PAGAR(CONTROLE EMPENHO)"]
-                ),
-                wrap(r["DESPESAS PAGAS (CONTROLE EMPENHO)"]),
+                wrap_small(r["UG Executora"]),
+                wrap_small(r["Fonte Recursos Detalhada"]),
+                wrap_small(r["GRUPO DESP"]),
+                wrap_small(r["Natureza Despesa"]),
+                wrap_small(r["DESPESAS INSCRITAS EM RP NAO PROCESSADOS"]),
+                wrap_small(r["DESPESAS EMPENHADAS (CONTROLE EMPENHO)"]),
+                wrap_small(r["DESPESAS LIQUIDADAS (CONTROLE EMPENHO)"]),
+                wrap_small(r["DESPESAS LIQUIDADAS A PAGAR(CONTROLE EMPENHO)"]),
+                wrap_small(r["DESPESAS PAGAS (CONTROLE EMPENHO)"]),
             ]
         )
 
+    # Larguras otimizadas para landscape
     col_widths = [
-        1.6 * inch,
-        1.8 * inch,
-        1.5 * inch,
-        1.8 * inch,
-        0.9 * inch,
-        0.9 * inch,
-        0.9 * inch,
-        0.9 * inch,
-        0.9 * inch,
+        1.2 * inch,  # UG Executora
+        1.4 * inch,  # Fonte Recursos
+        1.1 * inch,  # Grupo Desp
+        1.3 * inch,  # Natureza Desp
+        0.75 * inch, # RP N.P.
+        0.75 * inch, # Empenha.
+        0.75 * inch, # Liquida.
+        0.8 * inch,  # Liq. Pagar
+        0.75 * inch, # Pagas
     ]
+    
     tbl = Table(table_data, colWidths=col_widths)
     tbl.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("WORDWRAP", (0, 0), (-1, -1), True),
-                ("FONTSIZE", (0, 0), (-1, 0), 6),
-                ("FONTSIZE", (0, 1), (-1, -1), 6),
+                ("FONTSIZE", (0, 0), (-1, 0), 5),
+                ("FONTSIZE", (0, 1), (-1, -1), 5),
                 (
                     "ROWBACKGROUNDS",
                     (0, 1),
                     (-1, -1),
-                    [colors.white, colors.HexColor("#f5f5f5")],
+                    [colors.white, colors.HexColor("#f9f9f9")],
                 ),
-                ("LEFTPADDING", (0, 0), (-1, -1), 3),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
             ]
         )
     )
