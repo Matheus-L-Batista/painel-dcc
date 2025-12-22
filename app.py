@@ -4,7 +4,6 @@ from dash import Dash, html, dcc
 app = Dash(__name__, use_pages=True)
 server = app.server
 
-# Itens do menu (links para as páginas)
 menu_links = [
     {"label": "Passagens DCF", "href": "/passagens-dcf"},
     {"label": "Pagamentos Efetivados", "href": "/pagamentos"},
@@ -21,7 +20,7 @@ app.layout = html.Div(
         html.Div(
             className="app-container",
             children=[
-                # SIDEBAR
+                # SIDEBAR (AGORA FLEX, NÃO FIXA)
                 html.Div(
                     className="sidebar",
                     children=[
@@ -58,7 +57,6 @@ app.layout = html.Div(
     ],
 )
 
-# Callback para montar o menu e destacar o item ativo
 @app.callback(
     dash.Output("sidebar-menu", "children"),
     dash.Input("url", "pathname"),
@@ -66,10 +64,9 @@ app.layout = html.Div(
 def atualizar_menu(pathname):
     itens = []
     for m in menu_links:
-        active = pathname == m["href"]
         class_name = (
             "sidebar-button sidebar-button-active"
-            if active
+            if pathname == m["href"]
             else "sidebar-button"
         )
         itens.append(
