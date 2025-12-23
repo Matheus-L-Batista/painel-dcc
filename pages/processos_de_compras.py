@@ -8,6 +8,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib import colors
+import plotly.express as px
+from datetime import datetime
 
 # --------------------------------------------------
 # Registro da página
@@ -44,7 +46,6 @@ def carregar_dados_processos():
     col_numero = "Número"
     col_data_entrada = "Data de Entrada"
     col_data_finalizacao = "Data finalização"
-    col_tempo_conclusao = "Tempo Conclusão"
     col_contr_reinstr_com = (
         "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº (com pontos e traços)"
     )
@@ -62,7 +63,6 @@ def carregar_dados_processos():
         col_numero,
         col_data_entrada,
         col_data_finalizacao,
-        col_tempo_conclusao,
         col_contr_reinstr_com,
     ]:
         if c not in df.columns:
@@ -83,10 +83,31 @@ def carregar_dados_processos():
     df[col_preco_estimado] = df[col_preco_estimado].apply(conv_moeda)
     df[col_valor_contratado] = df[col_valor_contratado].apply(conv_moeda)
 
+    # datas e mês de finalização
+    df["Data finalização"] = pd.to_datetime(
+        df["Data finalização"], format="%d/%m/%Y", errors="coerce"
+    )
+    meses_map = {
+        1: "janeiro",
+        2: "fevereiro",
+        3: "março",
+        4: "abril",
+        5: "maio",
+        6: "junho",
+        7: "julho",
+        8: "agosto",
+        9: "setembro",
+        10: "outubro",
+        11: "novembro",
+        12: "dezembro",
+    }
+    df["Mes_finalizacao"] = df["Data finalização"].dt.month.map(meses_map)
+
     return df
 
 
 df_proc_base = carregar_dados_processos()
+ANO_ATUAL = datetime.now().year
 
 dropdown_style = {
     "color": "black",
@@ -119,7 +140,7 @@ layout = html.Div(
             children=[
                 html.H3("Filtros", className="sidebar-title"),
 
-                # Linha 1: Número do Processo, Ano, Solicitante, Objeto
+                # Linha 1: Número, Ano, Mês, Solicitante, Objeto
                 html.Div(
                     style={
                         "display": "flex",
@@ -129,7 +150,7 @@ layout = html.Div(
                     },
                     children=[
                         html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
+                            style={"minWidth": "200px", "flex": "1 1 240px"},
                             children=[
                                 html.Label("Número do Processo"),
                                 dcc.Input(
@@ -144,7 +165,7 @@ layout = html.Div(
                             ],
                         ),
                         html.Div(
-                            style={"minWidth": "140px", "flex": "0 0 160px"},
+                            style={"minWidth": "120px", "flex": "0 0 140px"},
                             children=[
                                 html.Label("Ano"),
                                 dcc.Dropdown(
@@ -158,6 +179,26 @@ layout = html.Div(
                                         )
                                         if str(a) != ""
                                     ],
+                                    value=ANO_ATUAL,
+                                    clearable=False,
+                                    style=dropdown_style,
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            style={"minWidth": "150px", "flex": "0 0 170px"},
+                            children=[
+                                html.Label("Mês de Finalização"),
+                                dcc.Dropdown(
+                                    id="filtro_mes_finalizacao",
+                                    options=[
+                                        {"label": m.capitalize(), "value": m}
+                                        for m in sorted(
+                                            df_proc_base["Mes_finalizacao"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                    ],
                                     value=None,
                                     placeholder="Todos",
                                     clearable=True,
@@ -166,7 +207,7 @@ layout = html.Div(
                             ],
                         ),
                         html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
+                            style={"minWidth": "200px", "flex": "1 1 240px"},
                             children=[
                                 html.Label("Solicitante"),
                                 dcc.Dropdown(
@@ -326,6 +367,26 @@ layout = html.Div(
             },
         ),
 
+        # Gráficos
+        html.Div(
+            style={
+                "display": "flex",
+                "flexWrap": "wrap",
+                "gap": "10px",
+                "marginBottom": "15px",
+            },
+            children=[
+                dcc.Graph(
+                    id="grafico_status_proc",
+                    style={"flex": "1 1 320px", "minWidth": "300px"},
+                ),
+                dcc.Graph(
+                    id="grafico_valor_mes_proc",
+                    style={"flex": "2 1 420px", "minWidth": "340px"},
+                ),
+            ],
+        ),
+
         # Tabela
         html.H4("Tabela de Processos de Compras"),
         dash_table.DataTable(
@@ -339,8 +400,7 @@ layout = html.Div(
                 {"name": "Valor Contratado", "id": "Valor Contratado_FMT"},
                 {"name": "Status", "id": "Status"},
                 {"name": "Data de Entrada", "id": "Data de Entrada"},
-                {"name": "Data finalização", "id": "Data finalização"},
-                {"name": "Tempo Conclusão", "id": "Tempo Conclusão"},
+                {"name": "Data finalização", "id": "Data finalização_FMT"},
                 {
                     "name": "Classificação (não concluídos)",
                     "id": "Classificação dos processos não concluídos",
@@ -378,21 +438,24 @@ layout = html.Div(
 )
 
 # ----------------------------------------
-# Callback: atualizar tabela + cards
+# Callback: atualizar tabela + cards + gráficos
 # ----------------------------------------
 @dash.callback(
     Output("tabela_proc", "data"),
     Output("store_dados_proc", "data"),
     Output("cards_resumo_proc", "children"),
+    Output("grafico_status_proc", "figure"),
+    Output("grafico_valor_mes_proc", "figure"),
     Input("filtro_num_proc", "value"),
     Input("filtro_ano_proc", "value"),
+    Input("filtro_mes_finalizacao", "value"),
     Input("filtro_solicitante_proc", "value"),
     Input("filtro_objeto_proc", "value"),
     Input("filtro_modalidade_proc", "value"),
     Input("filtro_status_proc", "value"),
     Input("filtro_classif_nc_proc", "value"),
 )
-def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
+def atualizar_tabela_proc(num_proc, ano, mes_finalizacao, solicitante, objeto,
                           modalidade, status, classif_nc):
     dff = df_proc_base.copy()
 
@@ -406,6 +469,8 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
 
     if ano:
         dff = dff[dff["Ano"] == ano]
+    if mes_finalizacao:
+        dff = dff[dff["Mes_finalizacao"] == mes_finalizacao]
     if solicitante:
         dff = dff[dff["Solicitante"] == solicitante]
     if objeto:
@@ -419,13 +484,19 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
             dff["Classificação dos processos não concluídos"] == classif_nc
         ]
 
-    # dados para tabela com moeda formatada
+    # dados para tabela com moeda e data formatadas
     dff_display = dff.copy()
     dff_display["PREÇO ESTIMADO_FMT"] = dff_display["PREÇO ESTIMADO"].apply(
         formatar_moeda
     )
     dff_display["Valor Contratado_FMT"] = dff_display["Valor Contratado"].apply(
         formatar_moeda
+    )
+    dff_display["Data de Entrada"] = pd.to_datetime(
+        dff_display["Data de Entrada"], format="%d/%m/%Y", errors="coerce"
+    ).dt.strftime("%d/%m/%Y")
+    dff_display["Data finalização_FMT"] = dff_display["Data finalização"].dt.strftime(
+        "%d/%m/%Y"
     )
 
     # cálculo dos cartões
@@ -441,10 +512,10 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
 
     card_style = {
         "flex": "1 1 220px",
-        "backgroundColor": "#f5f5f5",
+        "backgroundColor": "#ffffff",
         "padding": "14px",
         "textAlign": "center",
-        "minHeight": "80px",
+        "minHeight": "20px",
     }
 
     cards = [
@@ -454,9 +525,9 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
             children=[
                 html.H4(
                     formatar_moeda(total_valor_contratado),
-                    style={"color": "#c00000", "margin": "0", "fontSize": "18px"},
+                    style={"color": "#c00000", "margin": "0", "fontSize": "20px"},
                 ),
-                html.Div("Valor Contratado", style={"fontSize": "13px"}),
+                html.Div("Valor Contratado", style={"fontSize": "15px"}),
             ],
         ),
         html.Div(
@@ -465,44 +536,128 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
             children=[
                 html.H4(
                     formatar_moeda(media_por_processo),
-                    style={"color": "#003A70", "margin": "0", "fontSize": "18px"},
+                    style={"color": "#003A70", "margin": "0", "fontSize": "20px"},
                 ),
-                html.Div("Média por Processo Concluído", style={"fontSize": "13px"}),
+                html.Div("Média por Processo Concluído", style={"fontSize": "15px"}),
             ],
         ),
         html.Div(
             className="card-resumo",
             style=card_style,
             children=[
-                html.H4(qtd_processos, style={"margin": "0", "fontSize": "18px"}),
-                html.Div("Número de Processos", style={"fontSize": "13px"}),
+                html.H4(qtd_processos, style={"margin": "0", "fontSize": "20px"}),
+                html.Div("Número de Processos", style={"fontSize": "15px"}),
             ],
         ),
         html.Div(
             className="card-resumo",
             style=card_style,
             children=[
-                html.H4(concluidos, style={"margin": "0", "fontSize": "18px"}),
-                html.Div("Processos Concluídos", style={"fontSize": "13px"}),
+                html.H4(concluidos, style={"margin": "0", "fontSize": "20px"}),
+                html.Div("Processos Concluídos", style={"fontSize": "15px"}),
             ],
         ),
         html.Div(
             className="card-resumo",
             style=card_style,
             children=[
-                html.H4(em_andamento, style={"margin": "0", "fontSize": "18px"}),
-                html.Div("Processos Em Andamento", style={"fontSize": "13px"}),
+                html.H4(em_andamento, style={"margin": "0", "fontSize": "20px"}),
+                html.Div("Processos Em Andamento", style={"fontSize": "15px"}),
             ],
         ),
         html.Div(
             className="card-resumo",
             style=card_style,
             children=[
-                html.H4(nao_concluidos, style={"margin": "0", "fontSize": "18px"}),
-                html.Div("Processos Não Concluídos", style={"fontSize": "13px"}),
+                html.H4(nao_concluidos, style={"margin": "0", "fontSize": "20px"}),
+                html.Div("Processos Não Concluídos", style={"fontSize": "15px"}),
             ],
         ),
     ]
+
+    # gráfico pizza de status com cores definidas
+    if dff.empty:
+        fig_status = px.pie(title="Porcentagem de Status")
+        fig_valor_mes = px.bar(title="Valor dos Processos Concluídos por Mês")
+    else:
+        grp_status = (
+            dff.groupby("Status", as_index=False)["Numero do Processo"]
+            .count()
+            .rename(columns={"Numero do Processo": "Qtd"})
+        )
+        fig_status = px.pie(
+            grp_status,
+            names="Status",
+            values="Qtd",
+            hole=0.6,
+            title="Porcentagem de Status",
+        )
+        # cores: Concluído (azul), Não Concluído (vermelho), Em Andamento (cinza)
+        fig_status.update_traces(
+            marker=dict(
+                colors=["#003A70", "#DA291C", "#A2AAAD"],
+                line=dict(color="#ECEDEF", width=2),
+            ),
+            textposition="outside",
+            texttemplate="%{label}<br>%{value} (%{percent:.2%})",
+        )
+        fig_status.update_layout(
+            title_x=0.5,
+            plot_bgcolor="#FFFFFF",
+            paper_bgcolor="#FFFFFF",
+            showlegend=True,
+        )
+
+        # gráfico barras horizontais: valor contratado por mês (somente concluídos)
+        dff_conc = dff[dff["Status"] == "Concluído"].copy()
+        if dff_conc.empty:
+            fig_valor_mes = px.bar(title="Valor dos Processos Concluídos por Mês")
+        else:
+            grp_mes = (
+                dff_conc.groupby("Mes_finalizacao", as_index=False)["Valor Contratado"]
+                .sum()
+            )
+            meses_ordem = [
+                "janeiro",
+                "fevereiro",
+                "março",
+                "abril",
+                "maio",
+                "junho",
+                "julho",
+                "agosto",
+                "setembro",
+                "outubro",
+                "novembro",
+                "dezembro",
+            ]
+            grp_mes["Mes_finalizacao"] = pd.Categorical(
+                grp_mes["Mes_finalizacao"],
+                categories=meses_ordem,
+                ordered=True,
+            )
+            grp_mes = grp_mes.sort_values("Mes_finalizacao")
+            grp_mes["Valor_fmt"] = grp_mes["Valor Contratado"].apply(formatar_moeda)
+
+            fig_valor_mes = px.bar(
+                grp_mes,
+                x="Valor Contratado",
+                y="Mes_finalizacao",
+                orientation="h",
+                text="Valor_fmt",
+                title="Valor dos Processos Concluídos por Mês",
+            )
+            fig_valor_mes.update_traces(
+                marker_color="#003A70",
+                textposition="outside",
+            )
+            fig_valor_mes.update_layout(
+                title_x=0.5,
+                xaxis_title="Valor Contratado (R$)",
+                yaxis_title="Mês de Finalização",
+                plot_bgcolor="#FFFFFF",
+                paper_bgcolor="#FFFFFF",
+            )
 
     cols_tabela = [
         "Solicitante",
@@ -513,13 +668,18 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
         "Valor Contratado_FMT",
         "Status",
         "Data de Entrada",
-        "Data finalização",
-        "Tempo Conclusão",
+        "Data finalização_FMT",
         "Classificação dos processos não concluídos",
         "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº (com pontos e traços)",
     ]
 
-    return dff_display[cols_tabela].to_dict("records"), dff.to_dict("records"), cards
+    return (
+        dff_display[cols_tabela].to_dict("records"),
+        dff.to_dict("records"),
+        cards,
+        fig_status,
+        fig_valor_mes,
+    )
 
 # ----------------------------------------
 # Callback: limpar filtros
@@ -527,6 +687,7 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
 @dash.callback(
     Output("filtro_num_proc", "value"),
     Output("filtro_ano_proc", "value"),
+    Output("filtro_mes_finalizacao", "value"),
     Output("filtro_solicitante_proc", "value"),
     Output("filtro_objeto_proc", "value"),
     Output("filtro_modalidade_proc", "value"),
@@ -536,7 +697,7 @@ def atualizar_tabela_proc(num_proc, ano, solicitante, objeto,
     prevent_initial_call=True,
 )
 def limpar_filtros_proc(n):
-    return None, None, None, None, None, None, None
+    return None, ANO_ATUAL, None, None, None, None, None, None
 
 # ----------------------------------------
 # Callback: gerar PDF
@@ -595,7 +756,6 @@ def gerar_pdf_proc(n, dados_proc):
         "Status",
         "Data de Entrada",
         "Data finalização",
-        "Tempo Conclusão",
         "Classificação dos processos não concluídos",
         "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº (com pontos e traços)",
     ]
@@ -603,6 +763,12 @@ def gerar_pdf_proc(n, dados_proc):
     df_pdf = df.copy()
     df_pdf["PREÇO ESTIMADO"] = df_pdf["PREÇO ESTIMADO"].apply(formatar_moeda)
     df_pdf["Valor Contratado"] = df_pdf["Valor Contratado"].apply(formatar_moeda)
+    df_pdf["Data de Entrada"] = pd.to_datetime(
+        df_pdf["Data de Entrada"], errors="coerce"
+    ).dt.strftime("%d/%m/%Y")
+    df_pdf["Data finalização"] = pd.to_datetime(
+        df_pdf["Data finalização"], errors="coerce"
+    ).dt.strftime("%d/%m/%Y")
 
     header = cols
     table_data = [header]
