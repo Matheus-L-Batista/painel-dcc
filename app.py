@@ -13,7 +13,8 @@ menu_links = [
     {"label": "Processos de Compras", "href": "/processos-de-compras"},
     {"label": "Portarias Agente de Compras/ Contratos Tipo Empenho", "href": "/portarias_agentedecompras"},
     {"label": "Portarias de Planejamento da Contratação", "href": "/portarias_planejamento"},
-   # {"label": "Consultar tabela", "href": "/consultartabelas"},
+    {"label": "Contratos", "href": "/contratos"},
+    {"label": "Consultar tabela", "href": "/consultartabelas"},
 ]
 
 app.layout = html.Div(

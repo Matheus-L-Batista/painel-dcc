@@ -12,15 +12,21 @@ dash.register_page(
 URL_PORTARIAS = (
     "https://docs.google.com/spreadsheets/d/"
     "17nBhvSoCeK3hNgCj2S57q3pF2Uxj6iBpZDvCX481KcU/"
-    "gviz/tq?tqx=out:csv&sheet=Check%20List"
-)
+    "gviz/tq?tqx=out:csv&sheet=Grupo%20da%20Cont."
+    )
+
+#def carregar_dados_portarias():
+#    # pula a primeira linha (index 0) e usa a segunda como header
+#    df = pd.read_csv(URL_PORTARIAS, header=1)
+#    df = pd.read_csv(URL_PORTARIAS, header=1)
+#    print(df.columns.tolist())
+
+#    df.columns = [c.strip() for c in df.columns]
+#    return df
 
 def carregar_dados_portarias():
-    # pula a primeira linha (index 0) e usa a segunda como header
-    df = pd.read_csv(URL_PORTARIAS, header=1)
-    df = pd.read_csv(URL_PORTARIAS, header=1)
-    print(df.columns.tolist())
-
+    df = pd.read_csv(URL_PORTARIAS)
+    
     df.columns = [c.strip() for c in df.columns]
     return df
 
