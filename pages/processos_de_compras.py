@@ -68,7 +68,6 @@ def carregar_dados_processos():
         if c not in df.columns:
             df[c] = ""
 
-    # garante numérico para cálculos
     def conv_moeda(v):
         if isinstance(v, str):
             v = (
@@ -83,7 +82,6 @@ def carregar_dados_processos():
     df[col_preco_estimado] = df[col_preco_estimado].apply(conv_moeda)
     df[col_valor_contratado] = df[col_valor_contratado].apply(conv_moeda)
 
-    # datas e mês de finalização
     df["Data finalização"] = pd.to_datetime(
         df["Data finalização"], format="%d/%m/%Y", errors="coerce"
     )
@@ -112,7 +110,7 @@ ANO_ATUAL = datetime.now().year
 dropdown_style = {
     "color": "black",
     "width": "100%",
-    "marginBottom": "10px",
+    "marginBottom": "6px",
     "whiteSpace": "normal",
 }
 
@@ -129,18 +127,12 @@ def formatar_moeda(v):
 # ----------------------------------------
 layout = html.Div(
     children=[
-        html.H2(
-            "Processos de Compras",
-            style={"textAlign": "center"},
-        ),
-
-        # Filtros
+        # Barra de filtros (sticky dentro da main-content)
         html.Div(
-            style={"marginBottom": "20px"},
+            id="barra_filtros_proc",
+            className="filtros-sticky",
             children=[
-                html.H3("Filtros", className="sidebar-title"),
-
-                # Linha 1: Número, Ano, Mês, Solicitante, Objeto
+                # Linha 1
                 html.Div(
                     style={
                         "display": "flex",
@@ -159,7 +151,7 @@ layout = html.Div(
                                     placeholder="Digite o número completo ou parte",
                                     style={
                                         "width": "100%",
-                                        "marginBottom": "10px",
+                                        "marginBottom": "6px",
                                     },
                                 ),
                             ],
@@ -252,15 +244,14 @@ layout = html.Div(
                         ),
                     ],
                 ),
-
-                # Linha 2: Modalidade, Status, Classificação
+                # Linha 2
                 html.Div(
                     style={
                         "display": "flex",
                         "flexWrap": "wrap",
                         "gap": "10px",
                         "alignItems": "flex-start",
-                        "marginTop": "8px",
+                        "marginTop": "4px",
                     },
                     children=[
                         html.Div(
@@ -333,9 +324,9 @@ layout = html.Div(
                         ),
                     ],
                 ),
-
+                # Botões
                 html.Div(
-                    style={"marginTop": "10px"},
+                    style={"marginTop": "4px"},
                     children=[
                         html.Button(
                             "Limpar filtros",
@@ -356,84 +347,85 @@ layout = html.Div(
             ],
         ),
 
-        # Cartões de resumo
+        # Conteúdo
         html.Div(
-            id="cards_resumo_proc",
-            style={
-                "display": "flex",
-                "flexWrap": "wrap",
-                "gap": "10px",
-                "marginBottom": "15px",
-            },
-        ),
-
-        # Gráficos
-        html.Div(
-            style={
-                "display": "flex",
-                "flexWrap": "wrap",
-                "gap": "10px",
-                "marginBottom": "15px",
-            },
             children=[
-                dcc.Graph(
-                    id="grafico_status_proc",
-                    style={"flex": "1 1 320px", "minWidth": "300px"},
+                html.Div(
+                    id="cards_resumo_proc",
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                        "marginBottom": "15px",
+                        "marginTop": "10px",
+                    },
                 ),
-                dcc.Graph(
-                    id="grafico_valor_mes_proc",
-                    style={"flex": "2 1 420px", "minWidth": "340px"},
+                html.Div(
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                        "marginBottom": "15px",
+                    },
+                    children=[
+                        dcc.Graph(
+                            id="grafico_status_proc",
+                            style={"flex": "1 1 320px", "minWidth": "300px"},
+                        ),
+                        dcc.Graph(
+                            id="grafico_valor_mes_proc",
+                            style={"flex": "2 1 420px", "minWidth": "340px"},
+                        ),
+                    ],
                 ),
+                html.H4("Tabela de Processos de Compras"),
+                dash_table.DataTable(
+                    id="tabela_proc",
+                    columns=[
+                        {"name": "Solicitante", "id": "Solicitante"},
+                        {"name": "Numero do Processo", "id": "Numero do Processo"},
+                        {"name": "Objeto", "id": "Objeto"},
+                        {"name": "Modalidade", "id": "Modalidade"},
+                        {"name": "PREÇO ESTIMADO", "id": "PREÇO ESTIMADO_FMT"},
+                        {"name": "Valor Contratado", "id": "Valor Contratado_FMT"},
+                        {"name": "Status", "id": "Status"},
+                        {"name": "Data de Entrada", "id": "Data de Entrada"},
+                        {"name": "Data finalização", "id": "Data finalização_FMT"},
+                        {
+                            "name": "Classificação (não concluídos)",
+                            "id": "Classificação dos processos não concluídos",
+                        },
+                        {
+                            "name": "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº",
+                            "id": "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº (com pontos e traços)",
+                        },
+                    ],
+                    data=[],
+                    row_selectable=False,
+                    cell_selectable=False,
+                    style_table={
+                        "overflowX": "auto",
+                        "overflowY": "auto",
+                        "maxHeight": "500px",
+                    },
+                    style_cell={
+                        "textAlign": "center",
+                        "padding": "6px",
+                        "fontSize": "12px",
+                        "minWidth": "80px",
+                        "maxWidth": "220px",
+                        "whiteSpace": "normal",
+                    },
+                    style_header={
+                        "fontWeight": "bold",
+                        "backgroundColor": "#0b2b57",
+                        "color": "white",
+                        "textAlign": "center",
+                    },
+                ),
+                dcc.Store(id="store_dados_proc"),
             ],
         ),
-
-        # Tabela
-        html.H4("Tabela de Processos de Compras"),
-        dash_table.DataTable(
-            id="tabela_proc",
-            columns=[
-                {"name": "Solicitante", "id": "Solicitante"},
-                {"name": "Numero do Processo", "id": "Numero do Processo"},
-                {"name": "Objeto", "id": "Objeto"},
-                {"name": "Modalidade", "id": "Modalidade"},
-                {"name": "PREÇO ESTIMADO", "id": "PREÇO ESTIMADO_FMT"},
-                {"name": "Valor Contratado", "id": "Valor Contratado_FMT"},
-                {"name": "Status", "id": "Status"},
-                {"name": "Data de Entrada", "id": "Data de Entrada"},
-                {"name": "Data finalização", "id": "Data finalização_FMT"},
-                {
-                    "name": "Classificação (não concluídos)",
-                    "id": "Classificação dos processos não concluídos",
-                },
-                {
-                    "name": "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº",
-                    "id": "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº (com pontos e traços)",
-                },
-            ],
-            data=[],
-            row_selectable=False,
-            cell_selectable=False,
-            style_table={
-                "overflowX": "auto",
-                "overflowY": "auto",
-                "maxHeight": "500px",
-            },
-            style_cell={
-                "textAlign": "center",
-                "padding": "6px",
-                "fontSize": "12px",
-                "minWidth": "80px",
-                "maxWidth": "220px",
-                "whiteSpace": "normal",
-            },
-            style_header={
-                "fontWeight": "bold",
-                "backgroundColor": "#0b2b57",
-                "color": "white",
-                "textAlign": "center",
-            },
-        ),
-        dcc.Store(id="store_dados_proc"),
     ],
 )
 
@@ -484,7 +476,6 @@ def atualizar_tabela_proc(num_proc, ano, mes_finalizacao, solicitante, objeto,
             dff["Classificação dos processos não concluídos"] == classif_nc
         ]
 
-    # dados para tabela com moeda e data formatadas
     dff_display = dff.copy()
     dff_display["PREÇO ESTIMADO_FMT"] = dff_display["PREÇO ESTIMADO"].apply(
         formatar_moeda
@@ -499,7 +490,6 @@ def atualizar_tabela_proc(num_proc, ano, mes_finalizacao, solicitante, objeto,
         "%d/%m/%Y"
     )
 
-    # cálculo dos cartões
     total_valor_contratado = dff["Valor Contratado"].sum()
     qtd_processos = len(dff)
     media_por_processo = (
@@ -575,7 +565,6 @@ def atualizar_tabela_proc(num_proc, ano, mes_finalizacao, solicitante, objeto,
         ),
     ]
 
-    # gráfico pizza de status com cores definidas
     if dff.empty:
         fig_status = px.pie(title="Porcentagem de Status")
         fig_valor_mes = px.bar(title="Valor dos Processos Concluídos por Mês")
@@ -592,7 +581,6 @@ def atualizar_tabela_proc(num_proc, ano, mes_finalizacao, solicitante, objeto,
             hole=0.6,
             title="Porcentagem de Status",
         )
-        # cores: Concluído (azul), Não Concluído (vermelho), Em Andamento (cinza)
         fig_status.update_traces(
             marker=dict(
                 colors=["#003A70", "#DA291C", "#A2AAAD"],
@@ -608,7 +596,6 @@ def atualizar_tabela_proc(num_proc, ano, mes_finalizacao, solicitante, objeto,
             showlegend=True,
         )
 
-        # gráfico barras horizontais: valor contratado por mês (somente concluídos)
         dff_conc = dff[dff["Status"] == "Concluído"].copy()
         if dff_conc.empty:
             fig_valor_mes = px.bar(title="Valor dos Processos Concluídos por Mês")
