@@ -13,14 +13,14 @@ dash.register_page(
 # URL da planilha (aba Fiscais)
 URL_PORTARIAS = (
     "https://docs.google.com/spreadsheets/d/"
-    "17nBhvSoCeK3hNgCj2S57q3pF2Uxj6iBpZDvCX481KcU/"
-    "gviz/tq?tqx=out:csv&sheet=Fiscais"
+    "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
+    "gviz/tq?tqx=out:csv&sheet=Consulta%20BI"
 )
 
 # Função para carregar os dados a partir da 3ª linha
 def carregar_dados_portarias():
     # header=2 -> usa a 3ª linha como cabeçalho
-    df = pd.read_csv(URL_PORTARIAS, header=3)
+    df = pd.read_csv(URL_PORTARIAS, header=0)
     df.columns = [c.strip() for c in df.columns]
     return df
 

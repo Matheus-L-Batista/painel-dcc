@@ -15,6 +15,7 @@ menu_links = [
     {"label": "Portarias de Planejamento da Contratação", "href": "/portarias_planejamento"},
     {"label": "Contratos", "href": "/contratos"},
     {"label": "Fiscais", "href": "/fiscais"}, 
+    {"label": "Status do Processo", "href": "/statusdoprocesso"}, 
     {"label": "Consultar tabela", "href": "/consultartabelas"},
 ]
 
