@@ -1,6 +1,14 @@
 import dash
-from dash import html, dcc, dash_table, Input, Output
+from dash import html, dcc, dash_table, Input, Output, State
 import pandas as pd
+
+from io import BytesIO
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib import colors
 
 dash.register_page(
     __name__,
@@ -40,6 +48,8 @@ def conv_moeda_br(v):
 
 
 def formatar_moeda(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
     try:
         v = float(v)
     except (TypeError, ValueError):
@@ -47,6 +57,9 @@ def formatar_moeda(v):
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+# --------------------------------------------------
+# Carga e tratamento de dados
+# --------------------------------------------------
 def carregar_dados_pca():
     df = pd.read_csv(URL_PCA, header=0)
     df.columns = [c.strip() for c in df.columns]
@@ -73,10 +86,13 @@ def carregar_dados_pca():
         if c not in df.columns:
             df[c] = None
 
-    # converte campos monetários principais
     df["Valor Total"] = df["Valor Total"].apply(conv_moeda_br)
     df["Saldo"] = df["Saldo"].apply(conv_moeda_br)
-    df["Valor"] = df["Valor"].apply(conv_moeda_br)
+    for c in df.columns:
+        if c.startswith("Valor"):
+            df[c] = df[c].apply(conv_moeda_br)
+        if c.startswith("SRP ou Outro Valor"):
+            df[c] = df[c].apply(conv_moeda_br)
 
     df["Ano"] = df["Ano"].astype("string")
     for c in [
@@ -92,41 +108,101 @@ def carregar_dados_pca():
         "Observações",
         "Objeto",
     ]:
-        df[c] = df[c].astype("string")
+        if c in df.columns:
+            df[c] = df[c].astype("string")
 
     return df
 
 
 df_pca_base = carregar_dados_pca()
 
-# Planejamento
+# ------------------ Tabela 1: Planejamento ------------------
 df_planejamento = df_pca_base.copy()
 df_planejamento["Planejado"] = df_planejamento["Valor Total"]
 df_planejamento["Executado"] = df_planejamento["Planejado"] - df_planejamento["Saldo"]
 
-# Processos: usar apenas Valor, agregado por DFD + Item
-df_processos = df_pca_base.copy()
-df_processos["Valor_Proc"] = df_processos["Valor"]
+# ------------------ Tabela 2: Processos (explodindo colunas) ------------------
+cols_grupo0 = [
+    "Ano",
+    "Área requisitante",
+    "Material ou Serviço",
+    "DFD",
+    "Item",
+    "Valor Total",
+    "Saldo",
+    "Processo",
+    "Observações",
+    "Objeto",
+    "SRP ou Outro Valor",
+    "Valor",
+]
+for c in cols_grupo0:
+    if c not in df_pca_base.columns:
+        df_pca_base[c] = None
+grupo0 = df_pca_base[cols_grupo0].copy()
 
-df_processos_group = (
-    df_processos.groupby(
-        ["DFD", "Item", "Área requisitante", "Material ou Serviço"],
-        as_index=False,
-    ).agg(
-        {
-            "Valor_Proc": "sum",
-            "Processo": "first",
-            "Objeto": "first",
-            "Observações": "first",
+
+def gerar_grupo(indice: int) -> pd.DataFrame:
+    suf = f".{indice}"
+
+    col_processo = f"Processo{suf}"
+    col_observ = f"Observações{suf}"
+    col_objeto = f"Objeto{suf}"
+    col_srp = f"SRP ou Outro Valor{suf}"
+    col_valor = f"Valor{suf}"
+
+    colunas_originais = [
+        "Ano",
+        "Área requisitante",
+        "Material ou Serviço",
+        "DFD",
+        "Item",
+        "Valor Total",
+        "Saldo",
+        col_processo,
+        col_observ,
+        col_objeto,
+        col_srp,
+        col_valor,
+    ]
+
+    for c in colunas_originais:
+        if c not in df_pca_base.columns:
+            df_pca_base[c] = None
+
+    tabela_sel = df_pca_base[colunas_originais].copy()
+    tabela_ren = tabela_sel.rename(
+        columns={
+            col_processo: "Processo",
+            col_observ: "Observações",
+            col_objeto: "Objeto",
+            col_srp: "SRP ou Outro Valor",
+            col_valor: "Valor",
         }
     )
-)
-df_processos_group.rename(
-    columns={"Valor_Proc": "Valor_Total_Processos"},
-    inplace=True,
-)
+    return tabela_ren
 
 
+grupos_dinamicos = [gerar_grupo(i) for i in range(1, 32)]
+tabela_processos_unida = pd.concat([grupo0] + grupos_dinamicos, ignore_index=True)
+
+for c in [
+    "Área requisitante",
+    "Material ou Serviço",
+    "DFD",
+    "Item",
+    "Processo",
+    "Observações",
+    "Objeto",
+]:
+    tabela_processos_unida[c] = tabela_processos_unida[c].astype("string")
+
+tabela_processos_unida["Valor"] = tabela_processos_unida["Valor"].apply(conv_moeda_br)
+
+
+# --------------------------------------------------
+# Layout
+# --------------------------------------------------
 layout = html.Div(
     children=[
         html.Div(
@@ -181,6 +257,28 @@ layout = html.Div(
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
+                                html.Label("Nome Classe/Grupo"),
+                                dcc.Dropdown(
+                                    id="filtro_classe_pca",
+                                    options=[
+                                        {"label": c, "value": c}
+                                        for c in sorted(
+                                            df_pca_base["Nome Classe/Grupo"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                        if str(c).strip() != ""
+                                    ],
+                                    value=None,
+                                    placeholder="Todos",
+                                    clearable=True,
+                                    style=dropdown_style,
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            style={"minWidth": "220px", "flex": "1 1 260px"},
+                            children=[
                                 html.Label("DFD (digitação)"),
                                 dcc.Input(
                                     id="filtro_dfd_texto_pca",
@@ -190,6 +288,28 @@ layout = html.Div(
                                         "width": "100%",
                                         "marginBottom": "6px",
                                     },
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            style={"minWidth": "220px", "flex": "1 1 260px"},
+                            children=[
+                                html.Label("DFD"),
+                                dcc.Dropdown(
+                                    id="filtro_dfd_pca",
+                                    options=[
+                                        {"label": d, "value": d}
+                                        for d in sorted(
+                                            df_pca_base["DFD"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                        if str(d).strip() != ""
+                                    ],
+                                    value=None,
+                                    placeholder="Todos",
+                                    clearable=True,
+                                    style=dropdown_style,
                                 ),
                             ],
                         ),
@@ -239,6 +359,25 @@ layout = html.Div(
                         ),
                     ],
                 ),
+                html.Div(
+                    style={"marginTop": "4px"},
+                    children=[
+                        html.Button(
+                            "Limpar filtros",
+                            id="btn_limpar_filtros_pca",
+                            n_clicks=0,
+                            className="filtros-button",
+                        ),
+                        html.Button(
+                            "Baixar Relatório PDF",
+                            id="btn_download_relatorio_pca",
+                            n_clicks=0,
+                            className="filtros-button",
+                            style={"marginLeft": "10px"},
+                        ),
+                        dcc.Download(id="download_relatorio_pca"),
+                    ],
+                ),
             ],
         ),
         html.Div(
@@ -270,6 +409,14 @@ layout = html.Div(
                                     "name": "Nome Classe/Grupo",
                                     "id": "Nome Classe/Grupo",
                                 },
+                                {
+                                    "name": "Código PDM material",
+                                    "id": "Código PDM material",
+                                },
+                                {
+                                    "name": "Nome do PDM material",
+                                    "id": "Nome do PDM material",
+                                },
                                 {"name": "Planejado", "id": "Planejado_fmt"},
                                 {"name": "Executado", "id": "Executado_fmt"},
                                 {"name": "Saldo", "id": "Saldo_fmt"},
@@ -296,9 +443,7 @@ layout = html.Div(
                 html.Div(
                     style={"flex": "1 1 50%", "minWidth": "300px"},
                     children=[
-                        html.H4(
-                            "Processos vinculados (Valor da coluna Valor por DFD + Item)"
-                        ),
+                        html.H4("Processos vinculados ao PCA"),
                         dash_table.DataTable(
                             id="tabela_pca_processos",
                             columns=[
@@ -318,10 +463,7 @@ layout = html.Div(
                                     "name": "Observações",
                                     "id": "Observações",
                                 },
-                                {
-                                    "name": "Valor Total Processos",
-                                    "id": "Valor_Total_Processos_fmt",
-                                },
+                                {"name": "Valor", "id": "Valor_fmt"},
                             ],
                             data=[],
                             style_table={
@@ -344,6 +486,7 @@ layout = html.Div(
                 ),
             ],
         ),
+        dcc.Store(id="store_dados_pca_processos"),
     ]
 )
 
@@ -351,34 +494,51 @@ layout = html.Div(
 @dash.callback(
     Output("tabela_pca_planejamento", "data"),
     Output("tabela_pca_processos", "data"),
+    Output("store_dados_pca_processos", "data"),
     Input("filtro_ano_pca", "value"),
     Input("filtro_classe_texto_pca", "value"),
+    Input("filtro_classe_pca", "value"),
     Input("filtro_dfd_texto_pca", "value"),
+    Input("filtro_dfd_pca", "value"),
     Input("filtro_area_pca", "value"),
     Input("filtro_tipo_pca", "value"),
 )
 def atualizar_tabelas_pca(
     ano,
     classe_texto,
+    classe_select,
     dfd_texto,
+    dfd_select,
     area,
     tipo,
 ):
     dff_plan = df_planejamento.copy()
-    dff_proc = df_processos_group.copy()
+    dff_proc = tabela_processos_unida.copy()
 
     if ano:
         dff_plan = dff_plan[dff_plan["Ano"] == str(ano)]
-        dff_proc = dff_proc[dff_proc["DFD"].str.contains(str(ano), na=False)]
+        dff_proc = dff_proc[dff_proc["Ano"] == str(ano)]
 
     if classe_texto and str(classe_texto).strip():
         termo = str(classe_texto).strip().lower()
-        dff_plan = dff_plan[
-            dff_plan["Nome Classe/Grupo"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
+        if "Nome Classe/Grupo" in dff_plan.columns:
+            dff_plan = dff_plan[
+                dff_plan["Nome Classe/Grupo"]
+                .astype(str)
+                .str.lower()
+                .str.contains(termo, na=False)
+            ]
+        if "Nome Classe/Grupo" in dff_proc.columns:
+            dff_proc = dff_proc[
+                dff_proc["Nome Classe/Grupo"]
+                .astype(str)
+                .str.lower()
+                .str.contains(termo, na=False)
+            ]
+
+    if classe_select:
+        dff_plan = dff_plan[dff_plan["Nome Classe/Grupo"] == classe_select]
+        dff_proc = dff_proc[dff_proc["Nome Classe/Grupo"] == classe_select]
 
     if dfd_texto and str(dfd_texto).strip():
         termo = str(dfd_texto).strip().lower()
@@ -388,6 +548,10 @@ def atualizar_tabelas_pca(
         dff_proc = dff_proc[
             dff_proc["DFD"].astype(str).str.lower().str.contains(termo, na=False)
         ]
+
+    if dfd_select:
+        dff_plan = dff_plan[dff_plan["DFD"] == dfd_select]
+        dff_proc = dff_proc[dff_proc["DFD"] == dfd_select]
 
     if area:
         dff_plan = dff_plan[dff_plan["Área requisitante"] == area]
@@ -401,9 +565,7 @@ def atualizar_tabelas_pca(
     dff_plan["Executado_fmt"] = dff_plan["Executado"].apply(formatar_moeda)
     dff_plan["Saldo_fmt"] = dff_plan["Saldo"].apply(formatar_moeda)
 
-    dff_proc["Valor_Total_Processos_fmt"] = dff_proc[
-        "Valor_Total_Processos"
-    ].apply(formatar_moeda)
+    dff_proc["Valor_fmt"] = dff_proc["Valor"].apply(formatar_moeda)
 
     cols_planejamento = [
         "DFD",
@@ -411,6 +573,8 @@ def atualizar_tabelas_pca(
         "Material ou Serviço",
         "Item",
         "Nome Classe/Grupo",
+        "Código PDM material",
+        "Nome do PDM material",
         "Planejado_fmt",
         "Executado_fmt",
         "Saldo_fmt",
@@ -425,8 +589,130 @@ def atualizar_tabelas_pca(
         "Processo",
         "Objeto",
         "Observações",
-        "Valor_Total_Processos_fmt",
+        "Valor_fmt",
     ]
-    dados_processos = dff_proc[cols_processos].fillna("").to_dict("records")
+    dados_processos_df = dff_proc[cols_processos].fillna("")
+    dados_processos = dados_processos_df.to_dict("records")
 
-    return dados_planejamento, dados_processos
+    return dados_planejamento, dados_processos, dados_processos_df.to_dict("records")
+
+
+@dash.callback(
+    Output("filtro_ano_pca", "value"),
+    Output("filtro_classe_texto_pca", "value"),
+    Output("filtro_classe_pca", "value"),
+    Output("filtro_dfd_texto_pca", "value"),
+    Output("filtro_dfd_pca", "value"),
+    Output("filtro_area_pca", "value"),
+    Output("filtro_tipo_pca", "value"),
+    Input("btn_limpar_filtros_pca", "n_clicks"),
+    prevent_initial_call=True,
+)
+def limpar_filtros_pca(n):
+    return None, None, None, None, None, None, None
+
+
+wrap_style_pca = ParagraphStyle(
+    name="wrap_pca",
+    fontSize=8,
+    leading=10,
+    spaceAfter=4,
+)
+
+
+def wrap_text_pca(text):
+    return Paragraph(str(text), wrap_style_pca)
+
+
+@dash.callback(
+    Output("download_relatorio_pca", "data"),
+    Input("btn_download_relatorio_pca", "n_clicks"),
+    State("store_dados_pca_processos", "data"),
+    prevent_initial_call=True,
+)
+def gerar_pdf_pca(n, dados_pca):
+    if not n or not dados_pca:
+        return None
+
+    df = pd.DataFrame(dados_pca)
+
+    buffer = BytesIO()
+    pagesize = landscape(A4)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=pagesize,
+        rightMargin=0.3 * inch,
+        leftMargin=0.3 * inch,
+        topMargin=0.4 * inch,
+        bottomMargin=0.4 * inch,
+    )
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    titulo = Paragraph(
+        "Relatório PCA - Processos vinculados",
+        ParagraphStyle(
+            "titulo_pca",
+            fontSize=16,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#0b2b57"),
+        ),
+    )
+    story.append(titulo)
+    story.append(Spacer(1, 0.2 * inch))
+
+    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
+    story.append(Spacer(1, 0.15 * inch))
+
+    cols = [
+        "DFD",
+        "Área requisitante",
+        "Material ou Serviço",
+        "Item",
+        "Processo",
+        "Objeto",
+        "Observações",
+        "Valor",
+    ]
+    cols = [c for c in cols if c in df.columns]
+
+    df_pdf = df.copy()
+    if "Valor" in df_pdf.columns:
+        df_pdf["Valor"] = df_pdf["Valor"].apply(formatar_moeda)
+
+    header = cols
+    table_data = [header]
+    for _, row in df_pdf[cols].iterrows():
+        table_data.append([wrap_text_pca(row[c]) for c in cols])
+
+    page_width = pagesize[0] - 0.6 * inch
+    col_width = page_width / max(1, len(header))
+    col_widths = [col_width] * len(header)
+
+    tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("WORDWRAP", (0, 0), (-1, -1), True),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+
+    story.append(tbl)
+    doc.build(story)
+    buffer.seek(0)
+
+    from dash import dcc
+
+    return dcc.send_bytes(buffer.getvalue(), "pca_processos_paisagem.pdf")
