@@ -2,6 +2,7 @@ import dash
 from dash import html, dcc, dash_table, Input, Output
 import pandas as pd
 
+
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
@@ -12,6 +13,7 @@ dash.register_page(
     title="Status do Processo",
 )
 
+
 # --------------------------------------------------
 # Fonte de dados (Consulta BI)
 # --------------------------------------------------
@@ -21,98 +23,97 @@ URL_CONSULTA_BI = (
     "gviz/tq?tqx=out:csv&sheet=Consulta%20BI"
 )
 
+
 # --------------------------------------------------
-# Carga e tratamento dos dados (espelhando a consulta M,
-# usando Data Mov, Data Mov.1, ..., Data Mov.39)
+# Carga e tratamento: espelha o CSV e empilha Data Mov, Data Mov.1, ...
 # --------------------------------------------------
 def carregar_dados_status():
-    df = pd.read_csv(URL_CONSULTA_BI)
+    # lê a aba Consulta BI
+    df = pd.read_csv(URL_CONSULTA_BI, header=0)
     df.columns = [c.strip() for c in df.columns]
 
-    # -------- Grupo base (sem sufixo) --------
-    col_base = [
-        "Linha", "Finalizado", "Processo", "Requisitante", "Objeto", "Modalidade",
-        "Número", "Valor inicial", "Não concluído", "Entrada na DCC",
-        "Data Mov", "E/S", "Deptº", "Ação",
+    # colunas fixas de processo (base do Grupo0 no M)
+    col_fixas = [
+        "Linha",
+        "Finalizado",
+        "Processo",
+        "Requisitante",
+        "Objeto",
+        "Modalidade",
+        "Número",
+        "Valor inicial",
+        # "Valor Final",  # se existir no CSV, pode habilitar
+        "Não concluído",
+        "Entrada na DCC",
     ]
-
-    # Garante que colunas base existam, para evitar KeyError
-    for c in col_base:
+    for c in col_fixas:
         if c not in df.columns:
             df[c] = None
 
-    grupo0 = df[col_base].copy()
+    # garante que a primeira Data Mov exista
+    if "Data Mov" not in df.columns:
+        df["Data Mov"] = None
 
-    # Tipos de data (como no M antes de combinar)
-    for col in ["Finalizado", "Entrada na DCC", "Data Mov"]:
-        if col in grupo0.columns:
-            grupo0[col] = pd.to_datetime(grupo0[col], errors="coerce")
+    # garante colunas base de movimentação
+    for c in ["E/S", "Deptº", "Ação"]:
+        if c not in df.columns:
+            df[c] = None
 
-    grupos = [grupo0]
+    # captura todas as colunas que começam com "Data Mov"
+    # (padrão pandas: Data Mov, Data Mov.1, Data Mov.2, ...)
+    data_cols = [c for c in df.columns if c.startswith("Data Mov")]
 
-    # -------- Função para gerar grupos com sufixos .1, .2, ..., .39 --------
-    def gerar_grupo(indice: int) -> pd.DataFrame:
-        # Ex.: indice = 1 -> Data Mov.1, E/S.1, Deptº.1, Ação.1
-        col_data_mov = f"Data Mov.{indice}"
-        col_es = f"E/S.{indice}"
-        col_dept = f"Deptº.{indice}"
-        col_acao = f"Ação.{indice}"
+    grupos = []
 
-        colunas_originais = [
-            "Linha", "Finalizado", "Processo", "Requisitante", "Objeto", "Modalidade",
-            "Número", "Valor inicial", "Não concluído", "Entrada na DCC",
-            col_data_mov, col_es, col_dept, col_acao,
-        ]
+    # 1) grupo base: usa a coluna "Data Mov" sem sufixo
+    grupo0 = df[col_fixas + ["Data Mov", "E/S", "Deptº", "Ação"]].copy()
+    grupos.append(grupo0)
 
-        # Seleciona apenas as colunas que realmente existem
-        cols_existentes = [c for c in colunas_originais if c in df.columns]
-        if not cols_existentes:
-            return pd.DataFrame(columns=col_base)
+    # 2) grupos adicionais: Data Mov.1, Data Mov.2, ...
+    for col in data_cols:
+        if col == "Data Mov":
+            continue  # já tratado no grupo0
 
-        tabela = df[cols_existentes].copy()
+        # col = "Data Mov.1" => suf = ".1"
+        suf = col[len("Data Mov"):]  # ".1", ".2", ...
+        col_data = f"Data Mov{suf}"
+        col_es = f"E/S{suf}"
+        col_dept = f"Deptº{suf}"
+        col_acao = f"Ação{suf}"
 
-        # Renomeia para o padrão sem sufixo
-        renomear = {}
-        if col_data_mov in tabela.columns:
-            renomear[col_data_mov] = "Data Mov"
-        if col_es in tabela.columns:
-            renomear[col_es] = "E/S"
-        if col_dept in tabela.columns:
-            renomear[col_dept] = "Deptº"
-        if col_acao in tabela.columns:
-            renomear[col_acao] = "Ação"
-        tabela = tabela.rename(columns=renomear)
+        # garante que as colunas existam
+        for c in [col_data, col_es, col_dept, col_acao]:
+            if c not in df.columns:
+                df[c] = None
 
-        # Garante todas as colunas do modelo final
-        for c in col_base:
-            if c not in tabela.columns:
-                tabela[c] = None
+        bloco = df[col_fixas + [col_data, col_es, col_dept, col_acao]].copy()
+        bloco = bloco.rename(
+            columns={
+                col_data: "Data Mov",
+                col_es: "E/S",
+                col_dept: "Deptº",
+                col_acao: "Ação",
+            }
+        )
+        grupos.append(bloco)
 
-        # Reordena
-        tabela = tabela[col_base]
-
-        # Tipos de data nesse grupo
-        for col in ["Finalizado", "Entrada na DCC", "Data Mov"]:
-            if col in tabela.columns:
-                tabela[col] = pd.to_datetime(tabela[col], errors="coerce")
-
-        return tabela
-
-    # -------- Gera grupos dinâmicos de 1 a 39 --------
-    for i in range(1, 40):
-        g = gerar_grupo(i)
-        if not g.empty:
-            grupos.append(g)
-
-    # -------- Une tudo (equivalente a Table.Combine) --------
+    # empilha tudo (equivalente ao Table.Combine da TabelaUnida)
     tabela_unida = pd.concat(grupos, ignore_index=True)
 
-    # Tipagem final (equivalente a TabelaFormatada)
+    # tipagem básica
     tabela_unida["Linha"] = tabela_unida["Linha"].astype(str)
 
     for col in [
-        "Finalizado", "Processo", "Requisitante", "Objeto",
-        "Modalidade", "Número", "Não concluído", "E/S", "Deptº", "Ação",
+        "Finalizado",
+        "Processo",
+        "Requisitante",
+        "Objeto",
+        "Modalidade",
+        "Número",
+        "Não concluído",
+        "E/S",
+        "Deptº",
+        "Ação",
     ]:
         if col in tabela_unida.columns:
             tabela_unida[col] = tabela_unida[col].astype("string")
@@ -122,21 +123,21 @@ def carregar_dados_status():
             tabela_unida["Valor inicial"], errors="coerce"
         )
 
-    # Entrada na DCC e Data Mov como datetime
+    # datas como datetime
     for col in ["Entrada na DCC", "Data Mov"]:
         if col in tabela_unida.columns:
-            tabela_unida[col] = pd.to_datetime(tabela_unida[col], errors="coerce")
+            tabela_unida[col] = pd.to_datetime(
+                tabela_unida[col], errors="coerce", dayfirst=True
+            )
 
-    # -------- Remove linhas totalmente em branco --------
+    # remove linhas totalmente vazias
     t_aux = tabela_unida.fillna("")
     mask_nao_vazia = t_aux.apply(
         lambda row: any(v not in ("", None) for v in row.values), axis=1
     )
     tabela_unida = tabela_unida[mask_nao_vazia].copy()
 
-    # -------- Substitui null em Finalizado por "" --------
-    if "Finalizado" in tabela_unida.columns:
-        tabela_unida["Finalizado"] = tabela_unida["Finalizado"].fillna("")
+    tabela_unida["Finalizado"] = tabela_unida["Finalizado"].fillna("")
 
     return tabela_unida
 
@@ -150,12 +151,12 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
+
 # --------------------------------------------------
-# Layout: filtros + duas tabelas lado a lado
+# Layout
 # --------------------------------------------------
 layout = html.Div(
     children=[
-        # Barra de filtros
         html.Div(
             id="barra_filtros_status",
             className="filtros-sticky",
@@ -168,7 +169,6 @@ layout = html.Div(
                         "alignItems": "flex-start",
                     },
                     children=[
-                        # Filtro de digitação para Processo
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
@@ -184,7 +184,6 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Filtro dropdown para Processo
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
@@ -207,7 +206,6 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Requisitante
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
@@ -230,7 +228,6 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Objeto
                         html.Div(
                             style={"minWidth": "260px", "flex": "2 1 320px"},
                             children=[
@@ -253,7 +250,6 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Modalidade
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
@@ -280,8 +276,6 @@ layout = html.Div(
                 ),
             ],
         ),
-
-        # Duas tabelas lado a lado
         html.Div(
             style={
                 "display": "flex",
@@ -290,7 +284,6 @@ layout = html.Div(
                 "marginTop": "10px",
             },
             children=[
-                # Tabela da esquerda
                 html.Div(
                     style={"flex": "1 1 50%", "minWidth": "300px"},
                     children=[
@@ -323,7 +316,6 @@ layout = html.Div(
                         ),
                     ],
                 ),
-                # Tabela da direita
                 html.Div(
                     style={"flex": "1 1 50%", "minWidth": "300px"},
                     children=[
@@ -360,8 +352,9 @@ layout = html.Div(
     ]
 )
 
+
 # --------------------------------------------------
-# Callback de filtros, regras e formatação de datas
+# Callback
 # --------------------------------------------------
 @dash.callback(
     Output("tabela_status_esquerda", "data"),
@@ -381,7 +374,6 @@ def atualizar_tabelas(
 ):
     dff = df_status.copy()
 
-    # Filtro por digitação em Processo
     if proc_texto and str(proc_texto).strip():
         termo = str(proc_texto).strip()
         dff = dff[
@@ -390,7 +382,6 @@ def atualizar_tabelas(
             .str.contains(termo, case=False, na=False)
         ]
 
-    # Filtro dropdown de Processo
     if proc_select:
         dff = dff[dff["Processo"] == proc_select]
 
@@ -403,70 +394,36 @@ def atualizar_tabelas(
     if modalidade:
         dff = dff[dff["Modalidade"] == modalidade]
 
-    # Ordenar em ordem decrescente pela coluna Linha
+    # ordena por Linha (opcional)
     try:
         dff["Linha_ordenacao"] = pd.to_numeric(dff["Linha"], errors="coerce")
     except Exception:
         dff["Linha_ordenacao"] = dff["Linha"]
-
     dff = dff.sort_values("Linha_ordenacao", ascending=False)
 
-    # ---------------------------
-    # TABELA ESQUERDA (Processo)
-    # ---------------------------
-    # Remove processos vazios/brancos
-    mask_proc_valido = (
-        dff["Processo"]
-        .astype(str)
-        .str.strip()
-        .ne("")
-    )
+    # esquerda: 1 linha por processo
+    mask_proc_valido = dff["Processo"].astype(str).str.strip().ne("")
     dff_esq = dff[mask_proc_valido].copy()
-
-    # Mantém apenas uma linha por Processo (primeira após ordenação)
     dff_esq = dff_esq.drop_duplicates(subset=["Processo"], keep="first")
 
-    # Formata datas para dd/mm/aaaa, se existirem
-    if "Data Mov" in dff_esq.columns:
-        dff_esq["Data Mov"] = pd.to_datetime(
-            dff_esq["Data Mov"], errors="coerce"
-        ).dt.strftime("%d/%m/%Y")
-    if "Entrada na DCC" in dff_esq.columns:
-        dff_esq["Entrada na DCC"] = pd.to_datetime(
-            dff_esq["Entrada na DCC"], errors="coerce"
-        ).dt.strftime("%d/%m/%Y")
+    dados_esquerda = dff_esq[
+        ["Processo", "Requisitante", "Objeto", "Modalidade", "Linha"]
+    ].to_dict("records")
 
-    cols_esq = ["Processo", "Requisitante", "Objeto", "Modalidade", "Linha"]
-    dados_esquerda = dff_esq[cols_esq].to_dict("records")
-
-    # ---------------------------
-    # TABELA DIREITA (Movimentações)
-    # ---------------------------
+    # direita: todas as movimentações daquele filtro
     dff_dir = dff.copy()
 
-    # Remove linhas com Ação vazia/branca
-    mask_acao_valida = (
-        dff_dir["Ação"]
-        .astype(str)
-        .str.strip()
-        .ne("")
-    )
-    # Remove linhas com E/S vazia/branca
-    mask_es_valida = (
-        dff_dir["E/S"]
-        .astype(str)
-        .str.strip()
-        .ne("")
-    )
-    dff_dir = dff_dir[mask_acao_valida & mask_es_valida].copy()
+    # mantém apenas linhas com Ação preenchida
+    mask_acao_valida = dff_dir["Ação"].astype(str).str.strip().ne("")
+    dff_dir = dff_dir[mask_acao_valida].copy()
 
-    # Formata Data Mov para dd/mm/aaaa
-    if "Data Mov" in dff_dir.columns:
-        dff_dir["Data Mov"] = pd.to_datetime(
-            dff_dir["Data Mov"], errors="coerce"
-        ).dt.strftime("%d/%m/%Y")
+    dff_dir["Data Mov"] = pd.to_datetime(
+        dff_dir["Data Mov"], errors="coerce"
+    )
+    dff_dir["Data Mov"] = dff_dir["Data Mov"].dt.strftime("%d/%m/%Y").fillna("")
 
-    cols_dir = ["Data Mov", "E/S", "Ação", "Deptº"]
-    dados_direita = dff_dir[cols_dir].to_dict("records")
+    dados_direita = dff_dir[
+        ["Data Mov", "E/S", "Ação", "Deptº"]
+    ].to_dict("records")
 
     return dados_esquerda, dados_direita
