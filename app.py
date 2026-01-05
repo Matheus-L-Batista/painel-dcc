@@ -11,11 +11,11 @@ server = app.server
 
 menu_links = [
     {"label": "Processos de Compras", "href": "/processos-de-compras"},
+    {"label": "Status do Processo", "href": "/statusdoprocesso"}, 
     {"label": "Portarias Agente de Compras/ Contratos Tipo Empenho", "href": "/portarias_agentedecompras"},
     {"label": "Portarias de Planejamento da Contratação", "href": "/portarias_planejamento"},
     {"label": "Contratos", "href": "/contratos"},
     {"label": "Fiscais", "href": "/fiscais"}, 
-    {"label": "Status do Processo", "href": "/statusdoprocesso"}, 
     {"label": "Plano de Contratação Anual", "href": "/pca"},
     {"label": "Controle de Atas", "href": "/atas"}, 
     #{"label": "Consultar tabela", "href": "/consultartabelas"},
