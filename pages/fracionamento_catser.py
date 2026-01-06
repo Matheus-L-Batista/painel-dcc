@@ -2,15 +2,27 @@ import dash
 from dash import html, dcc, dash_table, Input, Output, State, no_update
 
 import pandas as pd
-from datetime import date
+
+from datetime import date, datetime
+from pytz import timezone
 
 from io import BytesIO
+
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    Image,
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib import colors
+
+import os
 
 # --------------------------------------------------
 # Registro da página
@@ -43,12 +55,14 @@ DATA_HOJE = date.today().strftime("%d/%m/%Y")
 # Carga e tratamento dos dados
 # --------------------------------------------------
 
+
 def carregar_dados_limite():
     df = pd.read_csv(URL_LIMITE_GASTO_ITA)
     df.columns = [c.strip() for c in df.columns]
 
     if COL_CATSER not in df.columns:
         df[COL_CATSER] = ""
+
     if COL_DESC_ORIG not in df.columns:
         df[COL_DESC_ORIG] = ""
 
@@ -67,7 +81,9 @@ def carregar_dados_limite():
             .str.replace(".", "", regex=False)
             .str.replace(",", ".", regex=False)
         )
-        df["Valor Empenhado"] = pd.to_numeric(df["Valor Empenhado"], errors="coerce")
+        df["Valor Empenhado"] = pd.to_numeric(
+            df["Valor Empenhado"], errors="coerce"
+        )
     else:
         df["Valor Empenhado"] = 0.0
 
@@ -79,14 +95,13 @@ def carregar_dados_limite():
 
     return df
 
+
 df_limite_base = carregar_dados_limite()
 
 CATSERS_UNICOS = sorted(
-    [
-        c
-        for c in df_limite_base[COL_CATSER].dropna().unique()
-        if isinstance(c, str) and c.strip() != ""
-    ]
+    c
+    for c in df_limite_base[COL_CATSER].dropna().unique()
+    if isinstance(c, str) and c.strip() != ""
 )
 
 dropdown_style = {
@@ -116,7 +131,7 @@ layout = html.Div(
                 "borderRight": "1px solid #ccc",
                 "padding": "5px",
                 "minWidth": "280px",
-                "fontSize": "12px",
+                "fontSize": "13px",
                 "textAlign": "justify",
             },
             children=[
@@ -145,14 +160,14 @@ layout = html.Div(
                 ),
                 html.P(
                     "II - à descrição dos serviços ou das obras, constante do Sistema de Catalogação "
-                    "de Serviços ou de Obras do Governo federal.\" (NR)"
+                    "de Serviços ou de Obras do Governo federal. (NR)"
                 ),
                 html.Br(),
                 html.P("Em resumo: Para materiais - PDM; para serviços - CATSER."),
                 html.Br(),
                 html.P(
-                    children=[
-                        "Para obtenção do PDM: no catálogo de compras disponível em ",
+                    [
+                        "Para obtenção do CATSER: no catálogo de compras disponível em ",
                         html.A(
                             "https://catalogo.compras.gov.br/cnbs-web/busca",
                             href="https://catalogo.compras.gov.br/cnbs-web/busca",
@@ -162,8 +177,8 @@ layout = html.Div(
                                 "textDecoration": "underline",
                             },
                         ),
-                        ", informar o número do CATMAT. Exemplo para o CATMAT 605322: a consulta "
-                        "retornará PDM: 8320. Esse é o número que deverá ser considerado.",
+                        ", informar o número do CATSER. Exemplo para o CATSER 123456: a consulta "
+                        "retornará os dados do serviço. Esse é o número que deverá ser considerado.",
                     ]
                 ),
                 html.Br(),
@@ -190,7 +205,6 @@ layout = html.Div(
                 ),
             ],
         ),
-
         # Coluna direita
         html.Div(
             id="coluna_direita_catser",
@@ -234,12 +248,12 @@ layout = html.Div(
                                         ),
                                     ],
                                 ),
-                                # CATSER checklist em 5 colunas, altura reduzida
+                                # CATSER checklist
                                 html.Div(
                                     style={
                                         "minWidth": "220px",
                                         "flex": "1 1 260px",
-                                        "maxHeight": "130px",  # metade aprox.
+                                        "maxHeight": "130px",
                                         "overflowY": "auto",
                                         "border": "1px solid #d1d5db",
                                         "borderRadius": "4px",
@@ -364,9 +378,12 @@ layout = html.Div(
                     },
                     style_data_conditional=[
                         {
-                            "if": {"column_id": "Saldo para contratação_fmt"},
-                            "backgroundColor": "#f9f9f9",
-                        }
+                            "if": {
+                                "filter_query": "{Saldo para contratação} <= 0",
+                            },
+                            "backgroundColor": "#ffcccc",
+                            "color": "#cc0000",
+                        },
                     ],
                 ),
                 dcc.Store(id="store_dados_limite_itajuba"),
@@ -378,6 +395,7 @@ layout = html.Div(
 # --------------------------------------------------
 # Callbacks
 # --------------------------------------------------
+
 
 @dash.callback(
     Output("filtro_catser_dropdown_itajuba", "options"),
@@ -392,32 +410,26 @@ def atualizar_opcoes_catser(catser_texto, valores_selecionados):
     else:
         termo = str(catser_texto).strip().lower()
         filtradas = [c for c in base if termo in str(c).lower()]
+
         if valores_selecionados:
             for v in valores_selecionados:
                 if v in base and v not in filtradas:
                     filtradas.append(v)
+
         opcoes = [{"label": c, "value": c} for c in sorted(filtradas)]
 
     return opcoes
 
+
 @dash.callback(
     Output("tabela_limite_itajuba", "data"),
     Output("store_dados_limite_itajuba", "data"),
-    Input("filtro_catser_texto_itajuba", "value"),
     Input("filtro_catser_dropdown_itajuba", "value"),
 )
-def atualizar_tabela_limite_itajuba(catser_texto, catser_lista):
+def atualizar_tabela_limite_itajuba(catser_lista):
     dff = df_limite_base.copy()
 
-    if catser_texto and str(catser_texto).strip():
-        termo = str(catser_texto).strip().lower()
-        dff = dff[
-            dff[COL_CATSER]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
-
+    # Filtro apenas pela checklist (digitação não interfere na tabela)
     if catser_lista:
         dff = dff[dff[COL_CATSER].isin(catser_lista)]
 
@@ -428,6 +440,7 @@ def atualizar_tabela_limite_itajuba(catser_texto, catser_lista):
         "Limite da Dispensa",
         "Saldo para contratação",
     ]
+
     for c in cols_tabela:
         if c not in dff.columns:
             dff[c] = pd.NA
@@ -444,21 +457,30 @@ def atualizar_tabela_limite_itajuba(catser_texto, catser_lista):
             .replace("X", ".")
         )
 
-    dff_display["Valor Empenhado_fmt"] = dff_display["Valor Empenhado"].apply(fmt_moeda)
-    dff_display["Limite da Dispensa_fmt"] = dff_display["Limite da Dispensa"].apply(fmt_moeda)
-    dff_display["Saldo para contratação_fmt"] = dff_display["Saldo para contratação"].apply(
+    dff_display["Valor Empenhado_fmt"] = dff_display["Valor Empenhado"].apply(
         fmt_moeda
     )
+    dff_display["Limite da Dispensa_fmt"] = dff_display[
+        "Limite da Dispensa"
+    ].apply(fmt_moeda)
+    dff_display["Saldo para contratação_fmt"] = dff_display[
+        "Saldo para contratação"
+    ].apply(fmt_moeda)
 
     cols_tabela_display = [
         COL_CATSER,
         "Descrição",
         "Valor Empenhado_fmt",
         "Limite da Dispensa_fmt",
+        "Saldo para contratação",
         "Saldo para contratação_fmt",
     ]
 
-    return dff_display[cols_tabela_display].to_dict("records"), dff.to_dict("records")
+    return (
+        dff_display[cols_tabela_display].to_dict("records"),
+        dff.to_dict("records"),
+    )
+
 
 @dash.callback(
     Output("filtro_catser_texto_itajuba", "value"),
@@ -469,6 +491,7 @@ def atualizar_tabela_limite_itajuba(catser_texto, catser_lista):
 def limpar_filtros_limite_itajuba(n):
     return None, []
 
+
 wrap_style = ParagraphStyle(
     name="wrap_limite_itajuba",
     fontSize=8,
@@ -476,8 +499,10 @@ wrap_style = ParagraphStyle(
     spaceAfter=4,
 )
 
+
 def wrap(text):
     return Paragraph(str(text), wrap_style)
+
 
 @dash.callback(
     Output("download_relatorio_limite_itajuba", "data"),
@@ -493,31 +518,131 @@ def gerar_pdf_limite_itajuba(n, dados):
 
     buffer = BytesIO()
     pagesize = landscape(A4)
+
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
         rightMargin=0.3 * inch,
         leftMargin=0.3 * inch,
-        topMargin=0.4 * inch,
+        topMargin=1.3 * inch,
         bottomMargin=0.4 * inch,
     )
 
     styles = getSampleStyleSheet()
     story = []
 
-    titulo = Paragraph(
-        "Relatório – Limite de Gasto – Itajubá por CATSER",
+    # OBTER DATA E HORA EM BRASÍLIA
+    tz_brasilia = timezone("America/Sao_Paulo")
+    data_hora_brasilia = datetime.now(tz_brasilia).strftime(
+        "%d/%m/%Y %H:%M:%S"
+    )
+
+    # ====== DATA NO TOPO DIREITO (LINHA PRÓPRIA) ======
+    data_top_table = Table(
+        [
+            [
+                Paragraph(
+                    data_hora_brasilia,
+                    ParagraphStyle(
+                        "data_topo",
+                        fontSize=9,
+                        alignment=TA_RIGHT,
+                        textColor="#333333",
+                    ),
+                )
+            ]
+        ],
+        colWidths=[pagesize[0] - 0.6 * inch],
+    )
+    data_top_table.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(data_top_table)
+    story.append(Spacer(1, 0.1 * inch))
+
+    # ADICIONAR 2 LOGOS NO TOPO (lado a lado)
+    logos_path = []
+    if os.path.exists(os.path.join("assets", "brasaobrasil.png")):
+        logos_path.append(os.path.join("assets", "brasaobrasil.png"))
+    if os.path.exists(os.path.join("assets", "simbolo_RGB.png")):
+        logos_path.append(os.path.join("assets", "simbolo_RGB.png"))
+
+    if logos_path:
+        logos = []
+        for logo_file in logos_path:
+            if os.path.exists(logo_file):
+                logo = Image(logo_file, width=1.2 * inch, height=1.2 * inch)
+                logos.append(logo)
+
+        if logos:
+            if len(logos) == 2:
+                logo_table = Table(
+                    [[logos[0], logos[1]]],
+                    colWidths=[
+                        pagesize[0] / 2 - 0.3 * inch,
+                        pagesize[0] / 2 - 0.3 * inch,
+                    ],
+                )
+            else:
+                logo_table = Table(
+                    [[logos[0]]],
+                    colWidths=[pagesize[0] - 0.6 * inch],
+                )
+
+            logo_table.setStyle(
+                TableStyle(
+                    [
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ]
+                )
+            )
+
+            story.append(logo_table)
+            story.append(Spacer(1, 0.15 * inch))
+
+    # TÍTULO CENTRALIZADO (sem data)
+    titulo_texto = (
+        "CONSULTA PDM\n"
+        "LIMITE DE GASTO COM DISPENSA DE LICITAÇÃO EM FUNÇÃO DO VALOR\n"
+        "UASG: 153030 - Campus Itajubá"
+    )
+
+    titulo_paragraph = Paragraph(
+        titulo_texto,
         ParagraphStyle(
-            "titulo_limite_itajuba",
-            fontSize=16,
+            "titulo_consulta",
+            fontSize=10,
             alignment=TA_CENTER,
             textColor="#0b2b57",
+            spaceAfter=4,
+            leading=12,
         ),
     )
-    story.append(titulo)
-    story.append(Spacer(1, 0.2 * inch))
-    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
+
+    titulo_table = Table(
+        [[titulo_paragraph]],
+        colWidths=[pagesize[0] - 0.6 * inch],
+    )
+    titulo_table.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    story.append(titulo_table)
     story.append(Spacer(1, 0.15 * inch))
+
+    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
+    story.append(Spacer(1, 0.1 * inch))
 
     cols = [
         COL_CATSER,
@@ -526,6 +651,7 @@ def gerar_pdf_limite_itajuba(n, dados):
         "Limite da Dispensa",
         "Saldo para contratação",
     ]
+
     for c in cols:
         if c not in df.columns:
             df[c] = ""
@@ -541,12 +667,18 @@ def gerar_pdf_limite_itajuba(n, dados):
         )
 
     df_pdf = df.copy()
-    for col in ["Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]:
+    for col in [
+        "Valor Empenhado",
+        "Limite da Dispensa",
+        "Saldo para contratação",
+    ]:
         if col in df_pdf.columns:
             df_pdf[col] = df_pdf[col].apply(fmt_moeda_pdf)
 
     header = cols
     table_data = [header]
+
+    saldo_values = df["Saldo para contratação"].tolist()
 
     for _, row in df_pdf[cols].iterrows():
         linha = [wrap(row[c]) for c in cols]
@@ -557,28 +689,49 @@ def gerar_pdf_limite_itajuba(n, dados):
     col_widths = [col_width] * len(header)
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
-    tbl.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("WORDWRAP", (0, 0), (-1, -1), True),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING", (0, 0), (-1, -1), 2),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
-    )
+
+    table_styles = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("WORDWRAP", (0, 0), (-1, -1), True),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+    ]
+
+    for row_idx, saldo in enumerate(saldo_values, 1):
+        if pd.notna(saldo) and saldo <= 0:
+            table_styles.append(
+                (
+                    "BACKGROUND",
+                    (0, row_idx),
+                    (-1, row_idx),
+                    colors.HexColor("#ffcccc"),
+                )
+            )
+            table_styles.append(
+                (
+                    "TEXTCOLOR",
+                    (0, row_idx),
+                    (-1, row_idx),
+                    colors.HexColor("#cc0000"),
+                )
+            )
+
+    tbl.setStyle(TableStyle(table_styles))
 
     story.append(tbl)
+
     doc.build(story)
     buffer.seek(0)
 
     from dash import dcc
 
-    return dcc.send_bytes(buffer.getvalue(), "limite_gasto_itajuba_catser.pdf")
+    return dcc.send_bytes(
+        buffer.getvalue(), "limite_gasto_itajuba_catser.pdf"
+    )
