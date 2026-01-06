@@ -1,5 +1,5 @@
 import dash
-from dash import Dash, html, dcc
+from dash import Dash, html, dcc, callback, Input, Output
 
 app = Dash(
     __name__,
@@ -9,18 +9,15 @@ app = Dash(
 )
 server = app.server
 
+# LINKS NORMAIS (já sem fracionamento e sem as duas portarias,
+# que ficarão dentro das caixinhas)
 menu_links = [
     {"label": "Processos de Compras", "href": "/processos-de-compras"},
-    {"label": "Status do Processo", "href": "/statusdoprocesso"}, 
-    {"label": "Fracionamento de Despesas CATSER", "href": "/fracionamento_catser"},
-    {"label": "Fracionamento de Despesas PDM", "href": "/fracionamento_pdm"},
-    {"label": "Portarias Agente de Compras/ Contratos Tipo Empenho", "href": "/portarias_agentedecompras"},
-    {"label": "Portarias de Planejamento da Contratação", "href": "/portarias_planejamento"},
+    {"label": "Status do Processo", "href": "/statusdoprocesso"},
     {"label": "Contratos", "href": "/contratos"},
-    {"label": "Fiscais", "href": "/fiscais"}, 
+    {"label": "Fiscais", "href": "/fiscais"},
     {"label": "Plano de Contratação Anual", "href": "/pca"},
-    {"label": "Controle de Atas", "href": "/atas"}, 
-    #{"label": "Consultar tabela", "href": "/consultartabelas"},
+    {"label": "Controle de Atas", "href": "/atas"},
 ]
 
 app.layout = html.Div(
@@ -74,12 +71,114 @@ app.layout = html.Div(
     ],
 )
 
-@app.callback(
-    dash.Output("sidebar-menu", "children"),
-    dash.Input("url", "pathname"),
+@callback(
+    Output("sidebar-menu", "children"),
+    Input("url", "pathname"),
 )
 def atualizar_menu(pathname):
     itens = []
+
+    # =========================
+    # 1) Caixa Fracionamento
+    # =========================
+    fracionamento_ativo = pathname in ["/fracionamento_pdm", "/fracionamento_catser"]
+
+    fr_btn_classes = "fracionamento-toggle"
+    fr_content_classes = "fracionamento-content"
+    if fracionamento_ativo:
+        fr_btn_classes += " active"
+        fr_content_classes += " expanded"
+
+    fracionamento_box = html.Div(
+        className="fracionamento-container",
+        children=[
+            html.Div(
+                "Fracionamento de Despesas",
+                id="btn-fracionamento",
+                className=fr_btn_classes,
+            ),
+            html.Div(
+                id="box-fracionamento",
+                className=fr_content_classes,
+                children=[
+                    dcc.Link(
+                        "Fracionamento de Despesas PDM",
+                        href="/fracionamento_pdm",
+                        className=(
+                            "fracionamento-subbutton fracionamento-subbutton-active"
+                            if pathname == "/fracionamento_pdm"
+                            else "fracionamento-subbutton"
+                        ),
+                    ),
+                    dcc.Link(
+                        "Fracionamento de Despesas CATSER",
+                        href="/fracionamento_catser",
+                        className=(
+                            "fracionamento-subbutton fracionamento-subbutton-active"
+                            if pathname == "/fracionamento_catser"
+                            else "fracionamento-subbutton"
+                        ),
+                    ),
+                ],
+            ),
+        ],
+    )
+    itens.append(fracionamento_box)
+
+    # =========================
+    # 2) Caixa Portarias
+    # =========================
+    portarias_paths = [
+        "/portarias_agentedecompras",
+        "/portarias_planejamento",
+    ]
+    portarias_ativa = pathname in portarias_paths
+
+    pt_btn_classes = "portarias-toggle"
+    pt_content_classes = "portarias-content"
+    if portarias_ativa:
+        pt_btn_classes += " active"
+        pt_content_classes += " expanded"
+
+    portarias_box = html.Div(
+        className="portarias-container",
+        children=[
+            html.Div(
+                "Portarias",
+                id="btn-portarias",
+                className=pt_btn_classes,
+            ),
+            html.Div(
+                id="box-portarias",
+                className=pt_content_classes,
+                children=[
+                    dcc.Link(
+                        "Portarias Agente de Compras/ Contratos Tipo Empenho",
+                        href="/portarias_agentedecompras",
+                        className=(
+                            "portarias-subbutton portarias-subbutton-active"
+                            if pathname == "/portarias_agentedecompras"
+                            else "portarias-subbutton"
+                        ),
+                    ),
+                    dcc.Link(
+                        "Portarias de Planejamento da Contratação",
+                        href="/portarias_planejamento",
+                        className=(
+                            "portarias-subbutton portarias-subbutton-active"
+                            if pathname == "/portarias_planejamento"
+                            else "portarias-subbutton"
+                        ),
+                    ),
+                ],
+            ),
+        ],
+    )
+    itens.append(portarias_box)
+
+    # =========================
+    # 3) Demais itens normais
+    # =========================
     for m in menu_links:
         class_name = (
             "sidebar-button sidebar-button-active"
@@ -93,7 +192,36 @@ def atualizar_menu(pathname):
                 className=class_name,
             )
         )
+
     return itens
+
+# Abre/fecha Fracionamento
+@callback(
+    Output("btn-fracionamento", "className"),
+    Output("box-fracionamento", "className"),
+    Input("btn-fracionamento", "n_clicks"),
+    prevent_initial_call=True,
+)
+def toggle_fracionamento(n):
+    base_btn = "fracionamento-toggle"
+    base_box = "fracionamento-content"
+    if n and n % 2 == 1:
+        return base_btn + " active", base_box + " expanded"
+    return base_btn, base_box
+
+# Abre/fecha Portarias
+@callback(
+    Output("btn-portarias", "className"),
+    Output("box-portarias", "className"),
+    Input("btn-portarias", "n_clicks"),
+    prevent_initial_call=True,
+)
+def toggle_portarias(n):
+    base_btn = "portarias-toggle"
+    base_box = "portarias-content"
+    if n and n % 2 == 1:
+        return base_btn + " active", base_box + " expanded"
+    return base_btn, base_box
 
 if __name__ == "__main__":
     app.run(debug=True)
