@@ -138,6 +138,7 @@ layout = html.Div(
                 "minWidth": "280px",
                 "fontSize": "13px",
                 "textAlign": "justify",
+                "backgroundColor": "#f0f4fa",  # fundo cinza claro
             },
             children=[
                 html.P("Prezado requisitante,"),
@@ -203,7 +204,7 @@ layout = html.Div(
                 html.Br(),
                 html.P(
                     "O processo de compra deverá vir instruído já na modalidade DISPENSA DE LICITAÇÃO. "
-                    "A tela de consulta (print da tela) deverá estar apensado ao processo, que será "
+                    "A tela de consulta (Relatório PDF) deverá estar apensado ao processo, que será "
                     "conferido pelo Setor de Compras e, somente a partir do resultado dessa conferência, "
                     "o processo prosseguirá.",
                     style={"color": "red"},
@@ -243,7 +244,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="filtro_pdm_texto_itajuba",
                                             type="text",
-                                            placeholder="Digite parte do PDM",
+                                            placeholder="Digite parte do PDM, selecione na lista e, após a seleção, apague o texto digitado.",
                                             style={
                                                 "width": "100%",
                                                 "marginBottom": "6px",
@@ -568,6 +569,7 @@ wrap_style = ParagraphStyle(
     fontSize=8,
     leading=10,
     spaceAfter=4,
+    alignment=TA_CENTER,  # ← Centralizar texto nas células
 )
 
 
@@ -676,9 +678,10 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
             story.append(logo_table)
             story.append(Spacer(1, 0.15 * inch))
 
+    # Título COM QUEBRAS DE LINHA
     titulo_texto = (
-        "CONSULTA PDM\n"
-        "LIMITE DE GASTO COM DISPENSA DE LICITAÇÃO EM FUNÇÃO DO VALOR\n"
+        "CONSULTA PDM<br/>"
+        "LIMITE DE GASTO COM DISPENSA DE LICITAÇÃO EM FUNÇÃO DO VALOR<br/>"
         "UASG: 153030 - Campus Itajubá"
     )
 
@@ -690,7 +693,7 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
             alignment=TA_CENTER,
             textColor="#0b2b57",
             spaceAfter=4,
-            leading=12,
+            leading=14,
         ),
     )
 
@@ -755,8 +758,15 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         table_data.append(linha)
 
     page_width = pagesize[0] - 0.6 * inch
-    col_width = page_width / max(1, len(header))
-    col_widths = [col_width] * len(header)
+    
+    # Larguras proporcionais das colunas
+    col_widths = [
+        0.9 * inch,                # COL_PDM
+        page_width - (0.9 + 1.1 + 1.1 + 1.1) * inch,  # Descrição (o resto)
+        1.1 * inch,                # Valor Empenhado
+        1.1 * inch,                # Limite da Dispensa
+        1.1 * inch,                # Saldo para contratação
+    ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
 
@@ -764,15 +774,21 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),  # ← Centraliza todas as colunas
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),  # ← Alinha verticalmente no meio
         ("WORDWRAP", (0, 0), (-1, -1), True),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LEFTPADDING", (0, 0), (-1, -1), 2),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
     ]
+
+    # Descrição alinhada à esquerda (coluna 1)
+    for row_idx in range(len(table_data)):
+        table_styles.append(
+            ("ALIGN", (1, row_idx), (1, row_idx), "LEFT")
+        )
 
     for row_idx, saldo in enumerate(saldo_values, 1):
         if pd.notna(saldo) and saldo <= 0:
