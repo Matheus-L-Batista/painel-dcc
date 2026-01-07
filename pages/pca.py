@@ -8,7 +8,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib import colors
-from datetime import datetime
 
 dash.register_page(
     __name__,
@@ -207,6 +206,7 @@ layout = html.Div(
             id="barra_filtros_pca",
             className="filtros-sticky",
             children=[
+                # Linha 1 de filtros (Material antes de Nome Classe)
                 html.Div(
                     style={
                         "display": "flex",
@@ -230,117 +230,9 @@ layout = html.Div(
                                         )
                                         if str(a).strip() != ""
                                     ],
-                                    # instrução da imagem: ano já selecionado,
-                                    # sem placeholder "Todos" e sem clearable
                                     value="2025",
                                     placeholder=None,
                                     clearable=False,
-                                    style=dropdown_style,
-                                ),
-                            ],
-                        ),
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Nome Classe/Grupo (digitação)"),
-                                dcc.Input(
-                                    id="filtro_classe_texto_pca",
-                                    type="text",
-                                    placeholder="Digite parte do nome da classe/grupo",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
-                                ),
-                            ],
-                        ),
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Nome Classe/Grupo"),
-                                dcc.Dropdown(
-                                    id="filtro_classe_pca",
-                                    options=[
-                                        {"label": c, "value": c}
-                                        for c in sorted(
-                                            df_pca_base["Nome Classe/Grupo"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(c).strip() != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Todos",
-                                    clearable=True,
-                                    style=dropdown_style,
-                                ),
-                            ],
-                        ),
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("DFD (digitação)"),
-                                dcc.Input(
-                                    id="filtro_dfd_texto_pca",
-                                    type="text",
-                                    placeholder="Digite parte do DFD",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
-                                ),
-                            ],
-                        ),
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("DFD"),
-                                dcc.Dropdown(
-                                    id="filtro_dfd_pca",
-                                    options=[
-                                        {"label": d, "value": d}
-                                        for d in sorted(
-                                            df_pca_base["DFD"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(d).strip() != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Todos",
-                                    clearable=True,
-                                    style=dropdown_style,
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-                html.Div(
-                    style={
-                        "display": "flex",
-                        "marginTop": "4px",
-                        "alignItems": "center",
-                        "gap": "10px",
-                    },
-                    children=[
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Área requisitante"),
-                                dcc.Dropdown(
-                                    id="filtro_area_pca",
-                                    options=[
-                                        {"label": a, "value": a}
-                                        for a in sorted(
-                                            df_pca_base["Área requisitante"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(a).strip() != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Todas",
-                                    clearable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -368,7 +260,71 @@ layout = html.Div(
                             ],
                         ),
                         html.Div(
-                            style={"marginTop": "18px"},
+                            style={"minWidth": "220px", "flex": "1 1 260px"},
+                            children=[
+                                html.Label("Área requisitante"),
+                                dcc.Dropdown(
+                                    id="filtro_area_pca",
+                                    options=[
+                                        {"label": a, "value": a}
+                                        for a in sorted(
+                                            df_pca_base["Área requisitante"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                        if str(a).strip() != ""
+                                    ],
+                                    value=None,
+                                    placeholder="Todas",
+                                    clearable=True,
+                                    style=dropdown_style,
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            style={"minWidth": "220px", "flex": "1 1 260px"},
+                            children=[
+                                html.Label("Nome Classe/Grupo (digitação)"),
+                                dcc.Input(
+                                    id="filtro_classe_texto_pca",
+                                    type="text",
+                                    placeholder="Digite parte do nome da classe/grupo",
+                                    style={
+                                        "width": "100%",
+                                        "marginBottom": "6px",
+                                    },
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            style={"minWidth": "220px", "flex": "1 1 260px"},
+                            children=[
+                                html.Label("DFD (digitação)"),
+                                dcc.Input(
+                                    id="filtro_dfd_texto_pca",
+                                    type="text",
+                                    placeholder="Digite parte do DFD",
+                                    style={
+                                        "width": "100%",
+                                        "marginBottom": "6px",
+                                    },
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+                # Linha 2: botões + cartões
+                html.Div(
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "justifyContent": "space-between",
+                        "marginTop": "6px",
+                        "flexWrap": "wrap",
+                        "gap": "10px",
+                    },
+                    children=[
+                        html.Div(
                             children=[
                                 html.Button(
                                     "Limpar filtros",
@@ -384,6 +340,44 @@ layout = html.Div(
                                     style={"marginLeft": "10px"},
                                 ),
                                 dcc.Download(id="download_relatorio_pca"),
+                            ],
+                        ),
+                        html.Div(
+                            style={
+                                "display": "flex",
+                                "justifyContent": "center",
+                                "flexGrow": 1,
+                                "gap": "10px",
+                                "flexWrap": "wrap",
+                            },
+                            children=[
+                                html.Div(
+                                    id="card_planejado_pca",
+                                    style={
+                                        "minWidth": "180px",
+                                        "padding": "10px 15px",
+                                        "backgroundColor": "#f5f5f5",
+                                        "textAlign": "center",
+                                    },
+                                ),
+                                html.Div(
+                                    id="card_executado_pca",
+                                    style={
+                                        "minWidth": "180px",
+                                        "padding": "10px 15px",
+                                        "backgroundColor": "#f5f5f5",
+                                        "textAlign": "center",
+                                    },
+                                ),
+                                html.Div(
+                                    id="card_saldo_pca",
+                                    style={
+                                        "minWidth": "180px",
+                                        "padding": "10px 15px",
+                                        "backgroundColor": "#f5f5f5",
+                                        "textAlign": "center",
+                                    },
+                                ),
                             ],
                         ),
                     ],
@@ -584,20 +578,19 @@ layout = html.Div(
     Output("tabela_pca_planejamento", "data"),
     Output("tabela_pca_processos", "data"),
     Output("store_dados_pca_processos", "data"),
+    Output("card_planejado_pca", "children"),
+    Output("card_executado_pca", "children"),
+    Output("card_saldo_pca", "children"),
     Input("filtro_ano_pca", "value"),
     Input("filtro_classe_texto_pca", "value"),
-    Input("filtro_classe_pca", "value"),
     Input("filtro_dfd_texto_pca", "value"),
-    Input("filtro_dfd_pca", "value"),
     Input("filtro_area_pca", "value"),
     Input("filtro_tipo_pca", "value"),
 )
 def atualizar_tabelas_pca(
     ano,
     classe_texto,
-    classe_select,
     dfd_texto,
-    dfd_select,
     area,
     tipo,
 ):
@@ -625,12 +618,6 @@ def atualizar_tabelas_pca(
                 .str.contains(termo, na=False)
             ]
 
-    if classe_select:
-        if "Nome Classe/Grupo" in dff_plan.columns:
-            dff_plan = dff_plan[dff_plan["Nome Classe/Grupo"] == classe_select]
-        if "Nome Classe/Grupo" in dff_proc.columns:
-            dff_proc = dff_proc[dff_proc["Nome Classe/Grupo"] == classe_select]
-
     if dfd_texto and str(dfd_texto).strip():
         termo = str(dfd_texto).strip().lower()
         dff_plan = dff_plan[
@@ -640,10 +627,6 @@ def atualizar_tabelas_pca(
             dff_proc["DFD"].astype(str).str.lower().str.contains(termo, na=False)
         ]
 
-    if dfd_select:
-        dff_plan = dff_plan[dff_plan["DFD"] == dfd_select]
-        dff_proc = dff_proc[dff_proc["DFD"] == dfd_select]
-
     if area:
         dff_plan = dff_plan[dff_plan["Área requisitante"] == area]
         dff_proc = dff_proc[dff_proc["Área requisitante"] == area]
@@ -652,8 +635,12 @@ def atualizar_tabelas_pca(
         dff_plan = dff_plan[dff_plan["Material ou Serviço"] == tipo]
         dff_proc = dff_proc[dff_proc["Material ou Serviço"] == tipo]
 
-    # remove linhas sem processo
-    dff_proc = dff_proc[dff_proc["Processo"].astype(str).str.strip() != ""]
+    # remove linhas sem processo (vazio, branco, apenas espaços ou "nan")
+    dff_proc = dff_proc[
+        (dff_proc["Processo"].astype(str).str.strip() != "") &
+        (dff_proc["Processo"].astype(str).str.strip().str.lower() != "nan") &
+        (dff_proc["Processo"].notna())
+    ]
 
     # Item inteiro
     dff_plan["Item"] = (
@@ -700,7 +687,6 @@ def atualizar_tabelas_pca(
         "Saldo_fmt",
         "Saldo_num",
     ]
-
     dados_planejamento = dff_plan[cols_planejamento].fillna("").to_dict("records")
 
     cols_processos = [
@@ -713,26 +699,62 @@ def atualizar_tabelas_pca(
         "Observações",
         "Valor_fmt",
     ]
-
     dados_processos_df = dff_proc[cols_processos].fillna("")
     dados_processos = dados_processos_df.to_dict("records")
 
-    return dados_planejamento, dados_processos, dados_processos_df.to_dict("records")
+    # totais para os cartões
+    total_planejado = dff_plan["Planejado"].sum()
+    total_executado = dff_plan["Executado"].sum()
+    total_saldo = dff_plan["Saldo"].sum()
+
+    card_planejado = html.Div(
+        [
+            html.Div(
+                formatar_moeda(total_planejado),
+                style={"color": "#c0392b", "fontSize": "20px", "fontWeight": "bold"},
+            ),
+            html.Div("Planejado"),
+        ]
+    )
+    card_executado = html.Div(
+        [
+            html.Div(
+                formatar_moeda(total_executado),
+                style={"color": "#0b2b57", "fontSize": "20px", "fontWeight": "bold"},
+            ),
+            html.Div("Executado"),
+        ]
+    )
+    card_saldo = html.Div(
+        [
+            html.Div(
+                formatar_moeda(total_saldo),
+                style={"color": "#2c3e50", "fontSize": "20px", "fontWeight": "bold"},
+            ),
+            html.Div("Saldo"),
+        ]
+    )
+
+    return (
+        dados_planejamento,
+        dados_processos,
+        dados_processos_df.to_dict("records"),
+        card_planejado,
+        card_executado,
+        card_saldo,
+    )
 
 @dash.callback(
     Output("filtro_ano_pca", "value"),
     Output("filtro_classe_texto_pca", "value"),
-    Output("filtro_classe_pca", "value"),
     Output("filtro_dfd_texto_pca", "value"),
-    Output("filtro_dfd_pca", "value"),
     Output("filtro_area_pca", "value"),
     Output("filtro_tipo_pca", "value"),
     Input("btn_limpar_filtros_pca", "n_clicks"),
     prevent_initial_call=True,
 )
 def limpar_filtros_pca(n):
-    # instrução da imagem: voltar sempre para 2025
-    return "2025", None, None, None, None, None, None
+    return "2025", None, None, None, None
 
 wrap_style_pca = ParagraphStyle(
     name="wrap_pca",
