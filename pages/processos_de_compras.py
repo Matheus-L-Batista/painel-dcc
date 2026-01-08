@@ -729,7 +729,172 @@ def atualizar_tabela_proc(
 def limpar_filtros_proc(n):
     return None, ANO_ATUAL, None, None, None, None, None, None
 
-# ----------------------------------------
+# ========================================
+# ========================================
+# FUNÇÕES PARA CARDS NO PDF - CORRIGIDO
+# ========================================
+def criar_card_elemento(titulo, valor, cor):
+    """
+    Cria um elemento de card para PDF
+    
+    Args:
+        titulo: Título do card
+        valor: Valor a exibir
+        cor: Cor hexadecimal para o valor
+    
+    Returns:
+        Uma Table com o card formatado
+    """
+    card_content = [
+        [
+            Paragraph(
+                f"<font size=11 color='{cor}'><b>{valor}</b></font>",
+                ParagraphStyle(
+                    "card_valor",
+                    alignment=TA_CENTER,
+                    spaceAfter=4,
+                ),
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size=8>{titulo}</font>",
+                ParagraphStyle(
+                    "card_titulo",
+                    alignment=TA_CENTER,
+                    textColor="#666666",
+                    spaceAfter=0,
+                ),
+            )
+        ]
+    ]
+    
+    card_table = Table(
+        card_content,
+        colWidths=[2.0 * inch],
+    )
+    
+    card_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F5F5")),
+                ("BORDER", (0, 0), (-1, -1), 1, colors.HexColor("#DDDDDD")),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    
+    return card_table
+
+
+def criar_cards_resumo_pdf(story, df, pagesize):
+    """
+    Cria cards de resumo no PDF com os mesmos dados dos cards HTML
+    df aqui DEVE ser o dataframe numérico (sem formatar moeda)
+    """
+    
+    # garante que é numérico caso venha como texto
+    df_num = df.copy()
+    df_num["Valor Contratado"] = pd.to_numeric(
+        df_num["Valor Contratado"], errors="coerce"
+    ).fillna(0)
+    
+    total_valor_contratado = df_num["Valor Contratado"].sum()
+    qtd_processos = len(df_num)
+    media_por_processo = (
+        total_valor_contratado / qtd_processos if qtd_processos > 0 else 0.0
+    )
+    
+    concluidos = (df_num["Status"] == "Concluído").sum()
+    em_andamento = (df_num["Status"] == "Em Andamento").sum()
+    nao_concluidos = (df_num["Status"] == "Não Concluído").sum()
+    
+    # Adicionar título dos cards
+    story.append(
+        Paragraph(
+            "RESUMO EXECUTIVO",
+            ParagraphStyle(
+                "cards_titulo",
+                fontSize=10,
+                alignment=TA_CENTER,
+                textColor="#0b2b57",
+                fontName="Helvetica-Bold",
+                spaceAfter=8,
+                leading=12,
+            ),
+        )
+    )
+    story.append(Spacer(1, 0.08 * inch))
+    
+    # Criar tabela com 3 colunas x 2 linhas de cards
+    card_data = [
+        [
+            criar_card_elemento(
+                "Valor Contratado",
+                formatar_moeda(total_valor_contratado),
+                "#c00000"
+            ),
+            criar_card_elemento(
+                "Média por Processo",
+                formatar_moeda(media_por_processo),
+                "#003A70"
+            ),
+            criar_card_elemento(
+                "Número de Processos",
+                str(qtd_processos),
+                "#333333"
+            ),
+        ],
+        [
+            criar_card_elemento(
+                "Processos Concluídos",
+                str(concluidos),
+                "#003A70"
+            ),
+            criar_card_elemento(
+                "Processos Em Andamento",
+                str(em_andamento),
+                "#F4A000"
+            ),
+            criar_card_elemento(
+                "Processos Não Concluídos",
+                str(nao_concluidos),
+                "#DA291C"
+            ),
+        ]
+    ]
+    
+    cards_table = Table(
+        card_data,
+        colWidths=[
+            (pagesize[0] - 0.3 * inch) / 3 - 0.05 * inch,
+            (pagesize[0] - 0.3 * inch) / 3 - 0.05 * inch,
+            (pagesize[0] - 0.3 * inch) / 3 - 0.05 * inch,
+        ],
+    )
+    
+    cards_table.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("GRID", (0, 0), (-1, -1), 0, colors.transparent),
+            ]
+        )
+    )
+    
+    story.append(cards_table)
+    story.append(Spacer(1, 0.15 * inch))
+
 # ----------------------------------------
 # Estilos de texto para PDF (COMPRAS)
 # ----------------------------------------
@@ -752,7 +917,7 @@ header_cell_style_compras = ParagraphStyle(
     fontSize=7,
     alignment=TA_CENTER,
     fontName="Helvetica-Bold",
-    textColor=colors.white,  # ✅ TEXTO BRANCO
+    textColor=colors.white,
 )
 
 def wrap_pdf_compras(text):
@@ -827,27 +992,24 @@ def criar_tabela_dados_compras(story, df, pagesize):
                 linha.append(simple_pdf_compras(valor))
         table_data.append(linha)
 
-    # ✅ LARGURAS AJUSTADAS
     col_widths = [
-        0.7 * inch,   # Solicitante
-        1.2 * inch,   # Número do Processo
-        1.2 * inch,   # Objeto
-        1.2 * inch,   # Modalidade
-        1.1 * inch,   # Preço Estimado
-        1.1 * inch,   # Valor Contratado
-        0.9 * inch,   # Status
-        0.9 * inch,   # Data de Entrada
-        0.9 * inch,   # Data Finalização
-        1.2 * inch,   # Classificação
-        1.0 * inch,   # Contratação Reinstruída
+        0.7 * inch,
+        1.2 * inch,
+        1.2 * inch,
+        1.2 * inch,
+        1.1 * inch,
+        1.1 * inch,
+        0.9 * inch,
+        0.9 * inch,
+        0.9 * inch,
+        1.2 * inch,
+        1.0 * inch,
     ]
     col_widths = col_widths[: len(cols)]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    # ✅ ESTILO: FUNDO AZUL, TEXTO BRANCO
     style_list = [
-        # Cabeçalho: FUNDO AZUL (#0b2b57), TEXTO BRANCO
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
@@ -856,8 +1018,6 @@ def criar_tabela_dados_compras(story, df, pagesize):
         ("TOPPADDING", (0, 0), (-1, 0), 8),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
         ("LINEBELOW", (0, 0), (-1, 0), 1.5, colors.HexColor("#0b2b57")),
-
-        # Corpo da tabela
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 1), (-1, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -888,7 +1048,13 @@ def gerar_pdf_proc(n, dados_proc):
 
     df = pd.DataFrame(dados_proc)
 
-    # aplicar MESMA formatação da tabela
+    # Preparar dataframe para os cards (valores numéricos)
+    df_cards = df.copy()
+    df_cards["Valor Contratado"] = pd.to_numeric(
+        df_cards["Valor Contratado"], errors="coerce"
+    ).fillna(0)
+
+    # Preparar dataframe para a tabela (valores formatados)
     df_pdf = df.copy()
     df_pdf["PREÇO ESTIMADO"] = df_pdf["PREÇO ESTIMADO"].apply(formatar_moeda)
     df_pdf["Valor Contratado"] = df_pdf["Valor Contratado"].apply(formatar_moeda)
@@ -913,6 +1079,7 @@ def gerar_pdf_proc(n, dados_proc):
     styles = getSampleStyleSheet()
     story = []
 
+    # Data e hora no topo
     tz_brasilia = timezone("America/Sao_Paulo")
     data_hora_brasilia = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
     data_top_table = Table(
@@ -1010,11 +1177,14 @@ def gerar_pdf_proc(n, dados_proc):
     story.append(titulo_table)
     story.append(Spacer(1, 0.15 * inch))
 
+    # ✅ CARDS COM DATAFRAME NUMÉRICO
+    criar_cards_resumo_pdf(story, df_cards, pagesize)
+
     # Total de registros
     story.append(Paragraph(f"Total de registros: {len(df_pdf)}", styles["Normal"]))
     story.append(Spacer(1, 0.1 * inch))
 
-    # Criar tabela com dados
+    # Tabela com dataframe formatado
     criar_tabela_dados_compras(story, df_pdf, pagesize)
 
     doc.build(story)
