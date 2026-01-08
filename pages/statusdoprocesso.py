@@ -595,41 +595,44 @@ def gerar_pdf_status(n, dados_status):
     story.append(Paragraph(data_hora, header_style))
     story.append(Spacer(1, 0.1 * inch))
 
-    logo_dir = "assets"
-    if os.path.exists(logo_dir):
-        logo_files = [
-            os.path.join(logo_dir, f)
-            for f in ["brasaobrasil.png", "simboloRGB.png", "logo1.png", "logo2.png"]
-            if os.path.exists(os.path.join(logo_dir, f))
-        ]
-        if logo_files:
-            logo_height = 0.5 * inch
-            logos = []
-            for lf in logo_files[:2]:
-                try:
-                    img = Image(lf, height=logo_height)
-                    logos.append(img)
-                except Exception:
-                    pass
+    logos_path = []
+    if os.path.exists(os.path.join("assets", "brasaobrasil.png")):
+        logos_path.append(os.path.join("assets", "brasaobrasil.png"))
+    if os.path.exists(os.path.join("assets", "simbolo_RGB.png")):
+        logos_path.append(os.path.join("assets", "simbolo_RGB.png"))
 
-            if logos:
-                while len(logos) < 2:
-                    logos.append("")
+    if logos_path:
+        logos = []
+        for logo_file in logos_path:
+            if os.path.exists(logo_file):
+                logo = Image(logo_file, width=1.2 * inch, height=1.2 * inch)
+                logos.append(logo)
 
-                logo_tbl = Table(
-                    [logos],
-                    colWidths=[pagesize[0] / 2 - 0.3 * inch] * 2,
+        if logos:
+            if len(logos) == 2:
+                logo_table = Table(
+                    [[logos[0], logos[1]]],
+                    colWidths=[
+                        pagesize[0] / 2 - 0.15 * inch,
+                        pagesize[0] / 2 - 0.15 * inch,
+                    ],
                 )
-                logo_tbl.setStyle(
-                    TableStyle(
-                        [
-                            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ]
-                    )
+            else:
+                logo_table = Table(
+                    [[logos[0]]],
+                    colWidths=[pagesize[0] - 0.3 * inch],
                 )
-                story.append(logo_tbl)
-                story.append(Spacer(1, 0.15 * inch))
+
+            logo_table.setStyle(
+                TableStyle(
+                    [
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ]
+                )
+            )
+            story.append(logo_table)
+            story.append(Spacer(1, 0.15 * inch))
 
     titulo = Paragraph(
         "RELATÓRIO DE STATUS DO PROCESSO",
