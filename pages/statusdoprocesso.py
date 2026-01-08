@@ -20,7 +20,6 @@ from datetime import datetime
 from pytz import timezone
 import os
 
-
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
@@ -31,7 +30,6 @@ dash.register_page(
     title="Status do Processo",
 )
 
-
 # --------------------------------------------------
 # Fonte de dados (Consulta BI)
 # --------------------------------------------------
@@ -40,7 +38,6 @@ URL_CONSULTA_BI = (
     "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
     "gviz/tq?tqx=out:csv&sheet=Consulta%20BI"
 )
-
 
 # --------------------------------------------------
 # Carga e tratamento: empilha Data Mov, Data Mov.1, ...
@@ -144,7 +141,6 @@ def carregar_dados_status():
 
     return tabela_unida
 
-
 df_status = carregar_dados_status()
 
 dropdown_style = {
@@ -164,7 +160,6 @@ processo_options = [
     {"label": row["Processo"], "value": row["Processo"]}
     for _, row in df_proc_opts.iterrows()
 ]
-
 
 # --------------------------------------------------
 # Layout
@@ -234,25 +229,19 @@ layout = html.Div(
                                 ),
                             ],
                         ),
+                        # Objeto por DIGITAÇÃO
                         html.Div(
                             style={"minWidth": "260px", "flex": "2 1 320px"},
                             children=[
-                                html.Label("Objeto"),
-                                dcc.Dropdown(
+                                html.Label("Objeto (digitação)"),
+                                dcc.Input(
                                     id="filtro_objeto",
-                                    options=[
-                                        {"label": o, "value": o}
-                                        for o in sorted(
-                                            df_status["Objeto"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(o) != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Todos",
-                                    clearable=True,
-                                    style=dropdown_style,
+                                    type="text",
+                                    placeholder="Digite parte do objeto",
+                                    style={
+                                        "width": "100%",
+                                        "marginBottom": "6px",
+                                    },
                                 ),
                             ],
                         ),
@@ -397,7 +386,6 @@ layout = html.Div(
     ]
 )
 
-
 # --------------------------------------------------
 # Callbacks principais
 # --------------------------------------------------
@@ -432,8 +420,12 @@ def atualizar_tabelas(
     if requisitante:
         dff = dff[dff["Requisitante"] == requisitante]
 
-    if objeto:
-        dff = dff[dff["Objeto"] == objeto]
+    # Objeto por digitação com contains
+    if objeto and str(objeto).strip():
+        termo_obj = str(objeto).strip()
+        dff = dff[
+            dff["Objeto"].astype(str).str.contains(termo_obj, case=False, na=False)
+        ]
 
     if modalidade:
         dff = dff[dff["Modalidade"] == modalidade]
@@ -494,7 +486,6 @@ def atualizar_tabelas(
 
     return dados_esquerda, dados_direita, dff_dir.to_dict("records")
 
-
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
@@ -509,7 +500,6 @@ def atualizar_tabelas(
 )
 def limpar_filtros_status(n):
     return None, None, None, None, None
-
 
 # --------------------------------------------------
 # Estilos de texto para PDF
@@ -527,14 +517,11 @@ simple_style_status = ParagraphStyle(
     alignment=TA_CENTER,
 )
 
-
 def wrap_pdf(text):
     return Paragraph(str(text), wrap_style_status)
 
-
 def simple_pdf(text):
     return Paragraph(str(text), simple_style_status)
-
 
 # --------------------------------------------------
 # Callback: gerar relatório PDF
@@ -844,4 +831,5 @@ def gerar_pdf_status(n, dados_status):
     doc.build(story)
     buffer.seek(0)
 
+    from dash import dcc
     return dcc.send_bytes(buffer.getvalue(), "status_processos_paisagem.pdf")
