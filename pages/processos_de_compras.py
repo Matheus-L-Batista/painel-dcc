@@ -198,7 +198,10 @@ layout = html.Div(
                                 dcc.Dropdown(
                                     id="filtro_mes_finalizacao",
                                     options=[
-                                        {"label": m.capitalize(), "value": m}
+                                        {
+                                            "label": m.capitalize(),
+                                            "value": m,
+                                        }
                                         for m in sorted(
                                             df_proc_base["Mes_finalizacao"]
                                             .dropna()
@@ -445,7 +448,6 @@ layout = html.Div(
         ),
     ],
 )
-
 # ----------------------------------------
 # Callback: atualizar tabela + cards + gráficos
 # ----------------------------------------
@@ -465,8 +467,18 @@ layout = html.Div(
     Input("filtro_classif_nc_proc", "value"),
 )
 def atualizar_tabela_proc(
-    num_proc, ano, mes_finalizacao, solicitante, objeto, modalidade, status, classif_nc
+    num_proc,
+    ano,
+    mes_finalizacao,
+    solicitante,
+    objeto,
+    modalidade,
+    status,
+    classif_nc,
 ):
+    # -------------------------
+    # Filtros principais (inclui ano)
+    # -------------------------
     dff = df_proc_base.copy()
 
     if num_proc and str(num_proc).strip():
@@ -479,19 +491,30 @@ def atualizar_tabela_proc(
 
     if ano:
         dff = dff[dff["Ano"] == ano]
+
     if mes_finalizacao:
         dff = dff[dff["Mes_finalizacao"] == mes_finalizacao]
+
     if solicitante:
         dff = dff[dff["Solicitante"] == solicitante]
+
     if objeto:
         dff = dff[dff["Objeto"] == objeto]
+
     if modalidade:
         dff = dff[dff["Modalidade"] == modalidade]
+
     if status:
         dff = dff[dff["Status"] == status]
-    if classif_nc:
-        dff = dff[dff["Classificação dos processos não concluídos"] == classif_nc]
 
+    if classif_nc:
+        dff = dff[
+            dff["Classificação dos processos não concluídos"] == classif_nc
+        ]
+
+    # -------------------------
+    # Formatação da tabela
+    # -------------------------
     dff_display = dff.copy()
     dff_display["PREÇO ESTIMADO_FMT"] = dff_display["PREÇO ESTIMADO"].apply(
         formatar_moeda
@@ -499,6 +522,7 @@ def atualizar_tabela_proc(
     dff_display["Valor Contratado_FMT"] = dff_display["Valor Contratado"].apply(
         formatar_moeda
     )
+
     dff_display["Data de Entrada"] = pd.to_datetime(
         dff_display["Data de Entrada"], format="%d/%m/%Y", errors="coerce"
     ).dt.strftime("%d/%m/%Y")
@@ -509,10 +533,15 @@ def atualizar_tabela_proc(
     dff_display["Data_Entrada_dt"] = pd.to_datetime(
         dff_display["Data de Entrada"], format="%d/%m/%Y", errors="coerce"
     )
-    dff_display = dff_display.sort_values(
-        "Data_Entrada_dt", ascending=False
-    ).reset_index(drop=True)
 
+    dff_display = (
+        dff_display.sort_values("Data_Entrada_dt", ascending=False)
+        .reset_index(drop=True)
+    )
+
+    # -------------------------
+    # Cards resumo
+    # -------------------------
     total_valor_contratado = dff["Valor Contratado"].sum()
     qtd_processos = len(dff)
     media_por_processo = (
@@ -588,6 +617,9 @@ def atualizar_tabela_proc(
         ),
     ]
 
+    # -------------------------
+    # Gráfico de status + gráfico anual
+    # -------------------------
     if dff.empty:
         fig_status = px.pie(title="Porcentagem de Status")
         fig_valor_mes = px.bar(title="Processos Concluídos por Ano")
@@ -622,7 +654,41 @@ def atualizar_tabela_proc(
             showlegend=True,
         )
 
-        dff_conc_global = df_proc_base[df_proc_base["Status"] == "Concluído"].copy()
+        # --- gráfico anual usa filtros exceto ano ---
+        dff_global = df_proc_base.copy()
+
+        if num_proc and str(num_proc).strip():
+            termo = str(num_proc).strip()
+            dff_global = dff_global[
+                dff_global["Numero do Processo"]
+                .astype(str)
+                .str.contains(termo, case=False, na=False)
+            ]
+
+        if mes_finalizacao:
+            dff_global = dff_global[
+                dff_global["Mes_finalizacao"] == mes_finalizacao
+            ]
+
+        if solicitante:
+            dff_global = dff_global[dff_global["Solicitante"] == solicitante]
+
+        if objeto:
+            dff_global = dff_global[dff_global["Objeto"] == objeto]
+
+        if modalidade:
+            dff_global = dff_global[dff_global["Modalidade"] == modalidade]
+
+        if status:
+            dff_global = dff_global[dff_global["Status"] == status]
+
+        if classif_nc:
+            dff_global = dff_global[
+                dff_global["Classificação dos processos não concluídos"]
+                == classif_nc
+            ]
+
+        dff_conc_global = dff_global[dff_global["Status"] == "Concluído"].copy()
 
         if dff_conc_global.empty:
             fig_valor_mes = px.bar(title="Processos Concluídos por Ano")
@@ -634,22 +700,35 @@ def atualizar_tabela_proc(
                     Qtd_Processos=("Numero do Processo", "count"),
                 )
             )
+
             grp_ano["Media_Por_Processo"] = (
                 grp_ano["Valor_Contratado_Total"] / grp_ano["Qtd_Processos"]
             )
 
-            fig_valor_mes = make_subplots(specs=[[{"secondary_y": True}]])
+            grp_ano["Valor_Contratado_Total_FMT"] = grp_ano[
+                "Valor_Contratado_Total"
+            ].apply(formatar_moeda)
+            grp_ano["Media_Por_Processo_FMT"] = grp_ano[
+                "Media_Por_Processo"
+            ].apply(formatar_moeda)
 
-            fig_valor_mes.add_trace(
-                go.Bar(
-                    x=grp_ano["Ano"],
-                    y=grp_ano["Media_Por_Processo"],
-                    name="Média por Processo",
-                    marker_color="blue",
-                    width=0.5,
-                ),
-                secondary_y=False,
+            hovertemplate_ano = (
+                "<b>Ano:</b> %{x}<br>"
+                + "<b>Valor Contratado Total:</b> %{customdata[0]}<br>"
+                + "<b>Média por Processo:</b> %{customdata[1]}<br>"
+                + "<b>Número de Processos Concluídos:</b> %{customdata[2]}"
+                + "<extra></extra>"
             )
+
+            customdata = grp_ano[
+                [
+                    "Valor_Contratado_Total_FMT",
+                    "Media_Por_Processo_FMT",
+                    "Qtd_Processos",
+                ]
+            ].values
+
+            fig_valor_mes = make_subplots(specs=[[{"secondary_y": True}]])
 
             fig_valor_mes.add_trace(
                 go.Bar(
@@ -657,7 +736,23 @@ def atualizar_tabela_proc(
                     y=grp_ano["Valor_Contratado_Total"],
                     name="Valor Contratado Total",
                     marker_color="red",
-                    width=0.3,
+                    width=0.4,
+                    customdata=customdata,
+                    hovertemplate=hovertemplate_ano,
+                ),
+                secondary_y=False,
+            )
+
+            fig_valor_mes.add_trace(
+                go.Bar(
+                    x=grp_ano["Ano"],
+                    y=grp_ano["Media_Por_Processo"],
+                    name="Média por Processo",
+                    marker_color="blue",
+                    width=0.4,
+                    offset=-0.2,
+                    customdata=customdata,
+                    hovertemplate=hovertemplate_ano,
                 ),
                 secondary_y=False,
             )
@@ -669,6 +764,8 @@ def atualizar_tabela_proc(
                     name="Número de Processos Concluídos",
                     mode="lines+markers",
                     line=dict(color="green", width=3),
+                    customdata=customdata,
+                    hovertemplate=hovertemplate_ano,
                 ),
                 secondary_y=True,
             )
@@ -680,6 +777,13 @@ def atualizar_tabela_proc(
                 xaxis_title="Ano",
                 plot_bgcolor="#FFFFFF",
                 paper_bgcolor="#FFFFFF",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.2,
+                    x=0.5,
+                    xanchor="center",
+                ),
             )
 
             fig_valor_mes.update_yaxes(
@@ -710,7 +814,80 @@ def atualizar_tabela_proc(
         fig_status,
         fig_valor_mes,
     )
+# ----------------------------------------
+# Callback: filtros em cascata
+# ----------------------------------------
+@dash.callback(
+    Output("filtro_solicitante_proc", "options"),
+    Output("filtro_objeto_proc", "options"),
+    Output("filtro_modalidade_proc", "options"),
+    Output("filtro_status_proc", "options"),
+    Output("filtro_classif_nc_proc", "options"),
+    Input("filtro_ano_proc", "value"),
+    Input("filtro_mes_finalizacao", "value"),
+    Input("filtro_solicitante_proc", "value"),
+    Input("filtro_objeto_proc", "value"),
+    Input("filtro_modalidade_proc", "value"),
+    Input("filtro_status_proc", "value"),
+    Input("filtro_classif_nc_proc", "value"),
+)
+def atualizar_opcoes_filtros(
+    ano,
+    mes_finalizacao,
+    solicitante,
+    objeto,
+    modalidade,
+    status,
+    classif_nc,
+):
+    dff = df_proc_base.copy()
 
+    if ano:
+        dff = dff[dff["Ano"] == ano]
+    if mes_finalizacao:
+        dff = dff[dff["Mes_finalizacao"] == mes_finalizacao]
+    if solicitante:
+        dff = dff[dff["Solicitante"] == solicitante]
+    if objeto:
+        dff = dff[dff["Objeto"] == objeto]
+    if modalidade:
+        dff = dff[dff["Modalidade"] == modalidade]
+    if status:
+        dff = dff[dff["Status"] == status]
+    if classif_nc:
+        dff = dff[
+            dff["Classificação dos processos não concluídos"] == classif_nc
+        ]
+
+    op_solicitante = [
+        {"label": s, "value": s}
+        for s in sorted(dff["Solicitante"].dropna().unique())
+        if str(s) != ""
+    ]
+    op_objeto = [
+        {"label": o, "value": o}
+        for o in sorted(dff["Objeto"].dropna().unique())
+        if str(o) != ""
+    ]
+    op_modalidade = [
+        {"label": m, "value": m}
+        for m in sorted(dff["Modalidade"].dropna().unique())
+        if str(m) != ""
+    ]
+    op_status = [
+        {"label": s, "value": s}
+        for s in sorted(dff["Status"].dropna().unique())
+        if str(s) != ""
+    ]
+    op_classif = [
+        {"label": c, "value": c}
+        for c in sorted(
+            dff["Classificação dos processos não concluídos"].dropna().unique()
+        )
+        if str(c) != ""
+    ]
+
+    return op_solicitante, op_objeto, op_modalidade, op_status, op_classif
 # ----------------------------------------
 # Callback: limpar filtros
 # ----------------------------------------
@@ -729,9 +906,7 @@ def atualizar_tabela_proc(
 def limpar_filtros_proc(n):
     return None, ANO_ATUAL, None, None, None, None, None, None
 
-# ========================================
-# ========================================
-# ========================================
+
 # ========================================
 # FUNÇÕES PARA CARDS NO PDF - COMPRAS
 # ========================================
@@ -872,7 +1047,7 @@ def criar_cards_resumo_pdf(story, df, pagesize):
 
     # Largura de cada card: divide a largura disponível por 6
     card_width = (pagesize[0] - 0.3 * inch) / 6 - 0.05 * inch
-    
+
     cards_table = Table(
         card_data,
         colWidths=[
@@ -901,6 +1076,7 @@ def criar_cards_resumo_pdf(story, df, pagesize):
 
     story.append(cards_table)
     story.append(Spacer(1, 0.15 * inch))
+
 
 # ----------------------------------------
 # Estilos de texto para PDF (COMPRAS)
@@ -1031,6 +1207,7 @@ def criar_tabela_dados_compras(story, df, pagesize):
     ]
 
     tbl.setStyle(TableStyle(style_list))
+
     story.append(tbl)
 
 
@@ -1099,6 +1276,7 @@ def gerar_pdf_proc(n, dados_proc):
         ],
         colWidths=[pagesize[0] - 0.3 * inch],
     )
+
     data_top_table.setStyle(
         TableStyle(
             [
@@ -1107,6 +1285,7 @@ def gerar_pdf_proc(n, dados_proc):
             ]
         )
     )
+
     story.append(data_top_table)
     story.append(Spacer(1, 0.1 * inch))
 
@@ -1147,6 +1326,7 @@ def gerar_pdf_proc(n, dados_proc):
                     ]
                 )
             )
+
             story.append(logo_table)
             story.append(Spacer(1, 0.15 * inch))
 
@@ -1163,10 +1343,12 @@ def gerar_pdf_proc(n, dados_proc):
             leading=14,
         ),
     )
+
     titulo_table = Table(
         [[titulo_paragraph]],
         colWidths=[pagesize[0] - 0.3 * inch],
     )
+
     titulo_table.setStyle(
         TableStyle(
             [
@@ -1175,6 +1357,7 @@ def gerar_pdf_proc(n, dados_proc):
             ]
         )
     )
+
     story.append(titulo_table)
     story.append(Spacer(1, 0.15 * inch))
 
@@ -1194,7 +1377,9 @@ def gerar_pdf_proc(n, dados_proc):
     criar_tabela_dados_compras(story, df_pdf, pagesize)
 
     doc.build(story)
+
     buffer.seek(0)
+
     return dcc.send_bytes(
         buffer.getvalue(),
         f"processos_compras_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf",
