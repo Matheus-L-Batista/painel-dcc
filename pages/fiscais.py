@@ -21,7 +21,6 @@ from reportlab.lib import colors
 from pytz import timezone
 import os
 
-
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
@@ -31,7 +30,6 @@ dash.register_page(
     name="Fiscais",
     title="Fiscais",
 )
-
 
 # --------------------------------------------------
 # URL da planilha de Fiscais
@@ -49,7 +47,6 @@ COL_OBJETO = "OBJETO"
 COL_CONTRATADA = "CONTRATADA"
 COL_FINAL_VIG = "Unnamed: 16"  # Final da Vigência
 COL_LINK_COMPRASNET = "COMPRASNET Contratos"
-
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
@@ -96,7 +93,6 @@ def carregar_dados_fiscais():
 
     # Coluna agregada Servidores para exibição na tabela (sem nomes vazios)
     if col_servidores_raw:
-
         def junta_servidores(row):
             nomes = []
             for c in col_servidores_raw:
@@ -140,7 +136,6 @@ def carregar_dados_fiscais():
 
     return df
 
-
 df_fiscais_base = carregar_dados_fiscais()
 SERVIDORES_UNICOS_FIS = getattr(df_fiscais_base, "_lista_servidores_unicos", [])
 
@@ -151,6 +146,78 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
+# --------------------------------------------------
+# Função auxiliar: filtros em cascata independentes
+# --------------------------------------------------
+def filtrar_fiscais(
+    servidores_texto,
+    servidores_drop,
+    contrato_texto,
+    contrato_drop,
+    contratada_texto,
+    contratada_drop,
+    status,
+):
+    dff = df_fiscais_base.copy()
+
+    # Servidores (digitação)
+    if servidores_texto and str(servidores_texto).strip():
+        termo = str(servidores_texto).strip().lower()
+        dff = dff[
+            dff["Servidores"]
+            .astype(str)
+            .str.lower()
+            .str.contains(termo, na=False)
+        ]
+
+    # Servidores (dropdown)
+    if servidores_drop:
+        termo = str(servidores_drop).strip().lower()
+        dff = dff[
+            dff["Servidores"]
+            .astype(str)
+            .str.lower()
+            .str.contains(termo, na=False)
+        ]
+
+    # Contrato (texto)
+    if contrato_texto and str(contrato_texto).strip():
+        termo = str(contrato_texto).strip().lower()
+        dff = dff[
+            dff["Contrato"].astype(str).str.lower().str.contains(termo, na=False)
+        ]
+
+    # Contrato (dropdown)
+    if contrato_drop:
+        dff = dff[dff["Contrato"] == contrato_drop]
+
+    # Contratada (texto)
+    if contratada_texto and str(contratada_texto).strip():
+        termo = str(contratada_texto).strip().lower()
+        dff = dff[
+            dff["Contratada"].astype(str).str.lower().str.contains(termo, na=False)
+        ]
+
+    # Contratada (dropdown)
+    if contratada_drop:
+        dff = dff[dff["Contratada"] == contratada_drop]
+
+    # Status
+    if status:
+        dff = dff[dff["Status"] == status]
+
+    # remove linhas sem texto em Status
+    dff = dff[dff["Status"].astype(str).str.strip() != ""]
+
+    # Ordena por Final da Vigência (mais recente em cima)
+    dff["_fim_vig_dt"] = pd.to_datetime(
+        dff["Final da Vigência"], dayfirst=True, errors="coerce"
+    )
+    dff = dff.sort_values("_fim_vig_dt", ascending=False).drop(
+        columns=["_fim_vig_dt"]
+    )
+
+    return dff
 
 # --------------------------------------------------
 # Layout
@@ -225,8 +292,8 @@ layout = html.Div(
                                         {"label": c, "value": c}
                                         for c in sorted(
                                             df_fiscais_base["Contrato"]
-                                                .dropna()
-                                                .unique()
+                                            .dropna()
+                                            .unique()
                                         )
                                         if str(c).strip() != ""
                                     ],
@@ -273,8 +340,8 @@ layout = html.Div(
                                         {"label": e, "value": e}
                                         for e in sorted(
                                             df_fiscais_base["Contratada"]
-                                                .dropna()
-                                                .unique()
+                                            .dropna()
+                                            .unique()
                                         )
                                         if str(e).strip() != ""
                                     ],
@@ -407,9 +474,8 @@ layout = html.Div(
     ]
 )
 
-
 # --------------------------------------------------
-# Callback: filtros
+# Callback: filtros (tabela + store)
 # --------------------------------------------------
 @dash.callback(
     Output("tabela_fiscais", "data"),
@@ -431,63 +497,14 @@ def atualizar_tabela_fiscais(
     contratada_drop,
     status,
 ):
-    dff = df_fiscais_base.copy()
-
-    # Servidores (digitação)
-    if servidores_texto and str(servidores_texto).strip():
-        termo = str(servidores_texto).strip().lower()
-        dff = dff[
-            dff["Servidores"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
-
-    # Servidores (dropdown)
-    if servidores_drop:
-        termo = str(servidores_drop).strip().lower()
-        dff = dff[
-            dff["Servidores"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
-
-    # Contrato texto
-    if contrato_texto and str(contrato_texto).strip():
-        termo = str(contrato_texto).strip().lower()
-        dff = dff[
-            dff["Contrato"].astype(str).str.lower().str.contains(termo, na=False)
-        ]
-
-    # Contrato dropdown
-    if contrato_drop:
-        dff = dff[dff["Contrato"] == contrato_drop]
-
-    # Contratada texto
-    if contratada_texto and str(contratada_texto).strip():
-        termo = str(contratada_texto).strip().lower()
-        dff = dff[
-            dff["Contratada"].astype(str).str.lower().str.contains(termo, na=False)
-        ]
-
-    # Contratada dropdown
-    if contratada_drop:
-        dff = dff[dff["Contratada"] == contratada_drop]
-
-    # Status
-    if status:
-        dff = dff[dff["Status"] == status]
-
-    # remove linhas sem texto em Status
-    dff = dff[dff["Status"].astype(str).str.strip() != ""]
-
-    # Ordena por Final da Vigência (mais recente em cima)
-    dff["_fim_vig_dt"] = pd.to_datetime(
-        dff["Final da Vigência"], dayfirst=True, errors="coerce"
-    )
-    dff = dff.sort_values("_fim_vig_dt", ascending=False).drop(
-        columns=["_fim_vig_dt"]
+    dff = filtrar_fiscais(
+        servidores_texto,
+        servidores_drop,
+        contrato_texto,
+        contrato_drop,
+        contratada_texto,
+        contratada_drop,
+        status,
     )
 
     dff = dff.copy()
@@ -495,14 +512,11 @@ def atualizar_tabela_fiscais(
     def mk_link(row):
         url = row.get("Link Comprasnet")
         contrato = row.get("Contrato")
-        # mesmo padrão do contratos.py: só exibe link se URL existir
         if isinstance(url, str) and url.strip() and isinstance(contrato, str):
             return f"[{contrato}]({url.strip()})"
-        return ""  # sem link, célula vazia
+        return ""
 
     dff["Contrato_markdown"] = dff.apply(mk_link, axis=1)
-
-    # Remove linhas onde Contrato_markdown está vazio (sem link)
     dff = dff[dff["Contrato_markdown"].str.strip() != ""]
 
     cols = [
@@ -518,6 +532,64 @@ def atualizar_tabela_fiscais(
 
     return dff[cols].to_dict("records"), dff.to_dict("records")
 
+# --------------------------------------------------
+# Callback: opções dos filtros (cascata)
+# --------------------------------------------------
+@dash.callback(
+    Output("filtro_servidores_dropdown_fis", "options"),
+    Output("filtro_contrato_dropdown_fis", "options"),
+    Output("filtro_contratada_dropdown_fis", "options"),
+    Input("filtro_servidores_texto_fis", "value"),
+    Input("filtro_servidores_dropdown_fis", "value"),
+    Input("filtro_contrato_texto_fis", "value"),
+    Input("filtro_contrato_dropdown_fis", "value"),
+    Input("filtro_contratada_texto_fis", "value"),
+    Input("filtro_contratada_dropdown_fis", "value"),
+    Input("filtro_status_fis", "value"),
+)
+def atualizar_opcoes_filtros_fis(
+    servidores_texto,
+    servidores_drop,
+    contrato_texto,
+    contrato_drop,
+    contratada_texto,
+    contratada_drop,
+    status,
+):
+    dff = filtrar_fiscais(
+        servidores_texto,
+        servidores_drop,
+        contrato_texto,
+        contrato_drop,
+        contratada_texto,
+        contratada_drop,
+        status,
+    )
+
+    # Servidores: extrai únicos da coluna agregada "Servidores"
+    servidores_list = []
+    for serv_str in dff["Servidores"].unique():
+        if isinstance(serv_str, str) and serv_str.strip():
+            # Separa por ";" e adiciona cada um
+            for s in serv_str.split(";"):
+                s = s.strip()
+                if s and s not in servidores_list:
+                    servidores_list.append(s)
+    servidores_list.sort()
+
+    op_servidores = [{"label": s, "value": s} for s in servidores_list]
+    op_contrato = [
+        {"label": c, "value": c}
+        for c in sorted(dff["Contrato"].dropna().unique())
+        if str(c).strip()
+    ]
+    op_contratada = [
+        {"label": e, "value": e}
+        for e in sorted(dff["Contratada"].dropna().unique())
+        if str(e).strip()
+    ]
+
+    return op_servidores, op_contrato, op_contratada
 
 # --------------------------------------------------
 # Callback: limpar filtros
@@ -536,7 +608,6 @@ def atualizar_tabela_fiscais(
 def limpar_filtros_fis(n):
     return None, None, None, None, None, None, None
 
-
 # --------------------------------------------------
 # PDF – estilos
 # --------------------------------------------------
@@ -545,7 +616,7 @@ wrap_style = ParagraphStyle(
     fontSize=7,
     leading=8,
     spaceAfter=2,
-    wordWrap="CJK",  # quebra agressiva
+    wordWrap="CJK",
 )
 
 simple_style = ParagraphStyle(
@@ -555,14 +626,11 @@ simple_style = ParagraphStyle(
     alignment=TA_CENTER,
 )
 
-
 def wrap(text):
     return Paragraph(str(text), wrap_style)
 
-
 def simple(text):
     return Paragraph(str(text), simple_style)
-
 
 # --------------------------------------------------
 # Callback: gerar PDF de fiscais
@@ -624,13 +692,11 @@ def gerar_pdf_fiscais(n, dados_fis):
     story.append(Spacer(1, 0.1 * inch))
 
     # Logos
-    # ========================================
     logos_path = []
     if os.path.exists(os.path.join("assets", "brasaobrasil.png")):
         logos_path.append(os.path.join("assets", "brasaobrasil.png"))
     if os.path.exists(os.path.join("assets", "simbolo_RGB.png")):
         logos_path.append(os.path.join("assets", "simbolo_RGB.png"))
-
 
     if logos_path:
         logos = []
@@ -638,7 +704,6 @@ def gerar_pdf_fiscais(n, dados_fis):
             if os.path.exists(logo_file):
                 logo = Image(logo_file, width=1.2 * inch, height=1.2 * inch)
                 logos.append(logo)
-
 
         if logos:
             if len(logos) == 2:
@@ -655,7 +720,6 @@ def gerar_pdf_fiscais(n, dados_fis):
                     colWidths=[pagesize[0] - 0.3 * inch],
                 )
 
-
             logo_table.setStyle(
                 TableStyle(
                     [
@@ -666,7 +730,6 @@ def gerar_pdf_fiscais(n, dados_fis):
             )
             story.append(logo_table)
             story.append(Spacer(1, 0.15 * inch))
-
 
     # Título
     titulo_texto = "RELATÓRIO DE FISCAIS DE CONTRATOS"
