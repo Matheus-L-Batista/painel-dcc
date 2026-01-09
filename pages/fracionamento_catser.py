@@ -53,10 +53,14 @@ COL_VALOR_EMPENHADO_ORIG = "Unnamed: 3"
 
 DATA_HOJE = date.today().strftime("%d/%m/%Y")
 
+# Limite da dispensa 2026
+VALOR_LIMITE_2026 = 65492.11
+
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
 # --------------------------------------------------
+
 
 def carregar_dados_limite():
     df = pd.read_csv(URL_LIMITE_GASTO_ITA)
@@ -89,7 +93,8 @@ def carregar_dados_limite():
     else:
         df["Valor Empenhado"] = 0.0
 
-    valor_limite = 65492.11
+    # Usa o limite de 2026
+    valor_limite = VALOR_LIMITE_2026
     df["Limite da Dispensa"] = valor_limite
     df["Saldo para contratação"] = df["Limite da Dispensa"] - df["Valor Empenhado"]
 
@@ -118,6 +123,7 @@ dropdown_style = {
 # Layout
 # --------------------------------------------------
 
+
 layout = html.Div(
     style={
         "display": "flex",
@@ -137,7 +143,7 @@ layout = html.Div(
                 "minWidth": "280px",
                 "fontSize": "13px",
                 "textAlign": "justify",
-                "backgroundColor": "#f0f4fa",  # fundo cinza claro
+                "backgroundColor": "#f0f4fa",
             },
             children=[
                 html.P("Prezado requisitante,"),
@@ -300,7 +306,7 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Terceira linha: título + texto + botões
+                        # Terceira linha: título + texto + card + botões
                         html.Div(
                             style={
                                 "marginTop": "8px",
@@ -326,16 +332,48 @@ layout = html.Div(
                                         html.Div(
                                             [
                                                 html.Span(
-                                                    "O valor global do processo de compra não poderá exceder esse limite.",
+                                                    "O valor global do processo de compra não poderá exceder esse limite."
                                                 ),
                                                 html.Br(),
                                                 html.Span(
-                                                    "O valor de cada item não poderá exceder o Saldo para Contratação.",
+                                                    "O valor de cada item não poderá exceder o Saldo para Contratação."
                                                 ),
                                             ],
                                             style={
                                                 "color": "red",
                                                 "fontSize": "12px",
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                # CARD DO LIMITE DA DISPENSA 2026
+                                html.Div(
+                                    style={
+                                        "border": "1px solid #d1d5db",
+                                        "borderRadius": "6px",
+                                        "padding": "6px 10px",
+                                        "backgroundColor": "#ecfdf5",
+                                        "minWidth": "220px",
+                                        "boxShadow": "0 1px 2px rgba(0,0,0,0.05)",
+                                        "fontSize": "12px",
+                                    },
+                                    children=[
+                                        html.Div(
+                                            "Limite da dispensa (2026)",
+                                            style={
+                                                "fontWeight": "bold",
+                                                "color": "#166534",
+                                                "marginBottom": "2px",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                        html.Div(
+                                            "R$ 65.492,11",
+                                            style={
+                                                "fontSize": "18px",
+                                                "fontWeight": "bold",
+                                                "color": "#14532d",
+                                                "textAlign": "center",
                                             },
                                         ),
                                     ],
@@ -450,6 +488,7 @@ layout = html.Div(
 # Callbacks
 # --------------------------------------------------
 
+
 @dash.callback(
     Output("filtro_catser_dropdown_itajuba", "options"),
     Input("filtro_catser_texto_itajuba", "value"),
@@ -560,12 +599,13 @@ def limpar_filtros_limite_itajuba(n):
 # PDF
 # --------------------------------------------------
 
+
 wrap_style = ParagraphStyle(
     name="wrap_limite_itajuba",
     fontSize=8,
     leading=10,
     spaceAfter=4,
-    alignment=TA_CENTER,  # ← Centralizar texto nas células
+    alignment=TA_CENTER,
 )
 
 
@@ -753,14 +793,14 @@ def gerar_pdf_limite_itajuba(n, dados):
         table_data.append(linha)
 
     page_width = pagesize[0] - 0.6 * inch
-    
+
     # Larguras proporcionais das colunas
     col_widths = [
-        0.9 * inch,                # CATSER
-        page_width - (0.9 + 1.1 + 1.1 + 1.1) * inch,  # Descrição (o resto)
-        1.1 * inch,                # Valor Empenhado
-        1.1 * inch,                # Limite da Dispensa
-        1.1 * inch,                # Saldo para contratação
+        0.9 * inch,  # CATSER
+        page_width - (0.9 + 1.1 + 1.1 + 1.1) * inch,  # Descrição
+        1.1 * inch,  # Valor Empenhado
+        1.1 * inch,  # Limite da Dispensa
+        1.1 * inch,  # Saldo para contratação
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -769,8 +809,8 @@ def gerar_pdf_limite_itajuba(n, dados):
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),  # ← Centraliza todas as colunas
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),  # ← Alinha verticalmente no meio
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("WORDWRAP", (0, 0), (-1, -1), True),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
