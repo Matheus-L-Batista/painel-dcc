@@ -1,7 +1,6 @@
 import dash
 from dash import html, dcc, dash_table, Input, Output, State
 import pandas as pd
-
 from io import BytesIO
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -23,7 +22,6 @@ import os
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
-
 dash.register_page(
     __name__,
     path="/statusdoprocesso",
@@ -34,7 +32,6 @@ dash.register_page(
 # --------------------------------------------------
 # Fonte de dados (Consulta BI)
 # --------------------------------------------------
-
 URL_CONSULTA_BI = (
     "https://docs.google.com/spreadsheets/d/"
     "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
@@ -44,8 +41,6 @@ URL_CONSULTA_BI = (
 # --------------------------------------------------
 # Carga e tratamento: empilha Data Mov, Data Mov.1, ...
 # --------------------------------------------------
-
-
 def carregar_dados_status():
     """
     Lê a planilha de Consulta BI e:
@@ -93,6 +88,7 @@ def carregar_dados_status():
     for col in data_cols:
         if col == "Data Mov":
             continue
+
         suf = col[len("Data Mov") :]
         col_data = f"Data Mov{suf}"
         col_es = f"E/S{suf}"
@@ -153,16 +149,20 @@ def carregar_dados_status():
             )
 
     tabela_unida["Finalizado"] = tabela_unida["Finalizado"].fillna("")
+
     return tabela_unida
 
 
 df_status = carregar_dados_status()
 
+# estilo dos dropdowns, sem CSS global
 dropdown_style = {
     "color": "black",
     "width": "100%",
     "marginBottom": "6px",
     "whiteSpace": "normal",
+    "position": "relative",
+    "zIndex": 9999,  # menus acima das tabelas
 }
 
 # Opções de processo (seleção) ordenadas pela linha mais recente (base global)
@@ -180,13 +180,19 @@ processo_options = [
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
-
 layout = html.Div(
     children=[
         # Barra de filtros
         html.Div(
             id="barra_filtros_status",
-            className="filtros-sticky",
+            # sem className, tudo inline
+            style={
+                "position": "relative",
+                "zIndex": 10,
+                "overflow": "visible",
+                "backgroundColor": "white",
+                "paddingBottom": "4px",
+            },
             children=[
                 html.Div(
                     style={
@@ -313,7 +319,6 @@ layout = html.Div(
                 ),
             ],
         ),
-
         # Tabelas esquerda / direita
         html.Div(
             style={
@@ -343,6 +348,8 @@ layout = html.Div(
                                 "overflowX": "auto",
                                 "overflowY": "auto",  # rolagem vertical
                                 "maxHeight": "500px",
+                                "position": "relative",
+                                "zIndex": 1,  # abaixo da barra de filtros
                             },
                             style_cell={
                                 "textAlign": "center",
@@ -354,6 +361,7 @@ layout = html.Div(
                                 "fontWeight": "bold",
                                 "backgroundColor": "#0b2b57",
                                 "color": "white",
+                                "zIndex": 2,
                             },
                         ),
                     ],
@@ -377,6 +385,8 @@ layout = html.Div(
                                 "overflowX": "auto",
                                 "overflowY": "auto",  # rolagem vertical
                                 "maxHeight": "500px",
+                                "position": "relative",
+                                "zIndex": 1,
                             },
                             style_cell={
                                 "textAlign": "center",
@@ -408,6 +418,7 @@ layout = html.Div(
                                 "backgroundColor": "#0b2b57",
                                 "color": "white",
                                 "textAlign": "center",
+                                "zIndex": 2,
                             },
                             style_data_conditional=[
                                 {
@@ -422,20 +433,17 @@ layout = html.Div(
                 ),
             ],
         ),
-
         # Store para dados filtrados (PDF)
         dcc.Store(id="store_dados_status"),
-    ]
+    ],
 )
 
 # --------------------------------------------------
-# Função auxiliar: filtro e limpeza de
+# Função auxiliar: filtro e limpeza de linhas
 # --------------------------------------------------
-
-
 def limpar_linhas_invalidas(df, colunas_check=None):
     """
-    Remove linhas onde TODAS as colunas_check são , vazio ou inválido.
+    Remove linhas onde TODAS as colunas_check são NaN/vazias/ inválidas.
     Se colunas_check não for fornecido, verifica todas as colunas.
     """
     if df.empty:
@@ -447,11 +455,10 @@ def limpar_linhas_invalidas(df, colunas_check=None):
     colunas_check = [c for c in colunas_check if c in df.columns]
 
     def eh_valido(valor):
-        """Verifica se valor é válido (não é , None, vazio, 'nan', 'none')"""
         if pd.isna(valor):
             return False
         valor_str = str(valor).strip().lower()
-        if valor_str in ("", "nan", "none", "", "nat"):
+        if valor_str in ("", "nan", "none", "", "nat", "<na>"):
             return False
         return True
 
@@ -459,14 +466,12 @@ def limpar_linhas_invalidas(df, colunas_check=None):
     mask = df[colunas_check].apply(
         lambda row: any(eh_valido(v) for v in row.values), axis=1
     )
-    return df[mask].copy()
 
+    return df[mask].copy()
 
 # --------------------------------------------------
 # Callback principal: tabelas (filtro ordem-invariante)
 # --------------------------------------------------
-
-
 @dash.callback(
     Output("tabela_status_esquerda", "data"),
     Output("tabela_status_direita", "data"),
@@ -554,6 +559,7 @@ def atualizar_tabelas(
 
     # ===== TABELA DIREITA =====
     dff_dir = dff.copy()
+
     for c in ["Data Mov", "E/S", "Ação", "Deptº"]:
         dff_dir[c] = dff_dir[c].astype(str).str.strip()
 
@@ -564,6 +570,7 @@ def atualizar_tabelas(
         & dff_dir["Ação"].str.lower().ne("nan")
         & dff_dir["Ação"].str.lower().ne("")
         & dff_dir["Ação"].str.lower().ne("nat")
+        & dff_dir["Ação"].str.lower().ne("<na>")
     )
     dff_dir = dff_dir[mask_acao_valida].copy()
 
@@ -575,7 +582,6 @@ def atualizar_tabelas(
     dff_dir["ordem_acao"] = (
         dff_dir["Ação"].astype(str).str.strip() != "FIM DCC"
     ).astype(int)
-
     dff_dir = dff_dir.sort_values(
         by=["Data Mov_dt", "ordem_acao"],
         ascending=[False, True],
@@ -595,8 +601,8 @@ def atualizar_tabelas(
     cols_check = ["Data Mov", "E/S", "Ação", "Deptº"]
     mask_linha_valida = dff_dir[cols_check].apply(
         lambda row: any(
-            (v_str := str(v).strip())
-            not in ("", "none", "nan", "", "nat")
+            (v_str := str(v).strip().lower())
+            not in ("", "none", "nan", "", "nat", "<na>")
             for v in row.values
         ),
         axis=1,
@@ -610,12 +616,9 @@ def atualizar_tabelas(
     # store_dados_status será usado para o PDF
     return dados_esquerda, dados_direita, dff_dir.to_dict("records")
 
-
 # --------------------------------------------------
 # Callback: filtros em cascata (ordem-invariante)
 # --------------------------------------------------
-
-
 @dash.callback(
     Output("filtro_requisitante", "options"),
     Output("filtro_modalidade", "options"),
@@ -681,14 +684,16 @@ def atualizar_opcoes_filtros_status(
     op_requisitante = [
         {"label": r, "value": r}
         for r in sorted(dff["Requisitante"].dropna().unique())
-        if str(r).strip() not in ("", "nan", "none", "", "nat")
+        if str(r).strip().lower()
+        not in ("", "nan", "none", "", "nat", "<na>")
     ]
 
     # Opções de Modalidade
     op_modalidade = [
         {"label": m, "value": m}
         for m in sorted(dff["Modalidade"].dropna().unique())
-        if str(m).strip() not in ("", "nan", "none", "", "nat")
+        if str(m).strip().lower()
+        not in ("", "nan", "none", "", "nat", "<na>")
     ]
 
     # Opções de Processo (seleção) restritas ao subconjunto filtrado
@@ -696,9 +701,11 @@ def atualizar_opcoes_filtros_status(
     df_proc_opts_local["Linha_num"] = pd.to_numeric(
         df_proc_opts_local["Linha"], errors="coerce"
     )
+
     df_proc_opts_local = df_proc_opts_local.sort_values(
         "Linha_num", ascending=False
     )
+
     df_proc_opts_local = df_proc_opts_local.drop_duplicates(
         subset=["Processo"], keep="first"
     )
@@ -706,18 +713,15 @@ def atualizar_opcoes_filtros_status(
     op_processo = [
         {"label": row["Processo"], "value": row["Processo"]}
         for _, row in df_proc_opts_local.iterrows()
-        if str(row["Processo"]).strip()
-        not in ("", "nan", "none", "", "nat")
+        if str(row["Processo"]).strip().lower()
+        not in ("", "nan", "none", "", "nat", "<na>")
     ]
 
     return op_requisitante, op_modalidade, op_processo
 
-
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
-
-
 @dash.callback(
     Output("filtro_processo_texto", "value"),
     Output("filtro_processo", "value"),
@@ -733,11 +737,9 @@ def limpar_filtros_status(n):
     """
     return None, None, None, None, None
 
-
 # --------------------------------------------------
 # Estilos de texto para PDF
 # --------------------------------------------------
-
 wrap_style_status = ParagraphStyle(
     name="wrap_status",
     fontSize=7,
@@ -751,20 +753,15 @@ simple_style_status = ParagraphStyle(
     alignment=TA_CENTER,
 )
 
-
 def wrap_pdf(text):
     return Paragraph(str(text), wrap_style_status)
-
 
 def simple_pdf(text):
     return Paragraph(str(text), simple_style_status)
 
-
 # --------------------------------------------------
 # Callback: gerar relatório PDF
 # --------------------------------------------------
-
-
 @dash.callback(
     Output("download_relatorio_status", "data"),
     Input("btn_download_relatorio_status", "n_clicks"),
@@ -798,12 +795,14 @@ def gerar_pdf_status(n, dados_status):
 
     # ===== DIREITA: todas as movimentações válidas =====
     df_dir = df_todos.copy()
+
     if "Ação" in df_dir.columns:
         df_dir["Ação"] = df_dir["Ação"].astype(str).str.strip()
         df_dir = df_dir[df_dir["Ação"] != ""]
         df_dir = df_dir[df_dir["Ação"].str.lower() != "nan"]
         df_dir = df_dir[df_dir["Ação"].str.lower() != "none"]
         df_dir = df_dir[df_dir["Ação"].str.lower() != ""]
+        df_dir = df_dir[df_dir["Ação"].str.lower() != "<na>"]
         df_dir = df_dir[df_dir["Ação"].notna()]
 
     # Limpa da tabela direita
@@ -832,13 +831,13 @@ def gerar_pdf_status(n, dados_status):
     # Data/hora no topo
     tz_br = timezone("America/Sao_Paulo")
     data_hora = datetime.now(tz_br).strftime("%d/%m/%Y %H:%M:%S")
-
     header_style = ParagraphStyle(
         "header_status",
         fontSize=8,
         alignment=TA_RIGHT,
         textColor=colors.grey,
     )
+
     story.append(Paragraph(data_hora, header_style))
     story.append(Spacer(1, 0.1 * inch))
 
@@ -879,6 +878,7 @@ def gerar_pdf_status(n, dados_status):
                     ]
                 )
             )
+
             story.append(logo_table)
             story.append(Spacer(1, 0.15 * inch))
 
@@ -893,6 +893,7 @@ def gerar_pdf_status(n, dados_status):
             fontName="Helvetica-Bold",
         ),
     )
+
     story.append(titulo)
     story.append(Spacer(1, 0.15 * inch))
 
@@ -911,6 +912,7 @@ def gerar_pdf_status(n, dados_status):
                 ),
             )
         )
+
         story.append(
             Paragraph(
                 f"Total de registros: {len(df_esq)}",
@@ -928,6 +930,7 @@ def gerar_pdf_status(n, dados_status):
         ]
         cols_esq = [c for c in cols_esq if c in df_esq.columns]
         df_esq_filtered = df_esq[cols_esq].copy()
+
         header_esq = cols_esq
         table_data_esq = [header_esq]
 
@@ -949,7 +952,6 @@ def gerar_pdf_status(n, dados_status):
             0.6 * inch,
         ]
         col_widths_esq = col_widths_esq[: len(cols_esq)]
-
         tbl_esq = Table(
             table_data_esq,
             colWidths=col_widths_esq,
@@ -978,6 +980,7 @@ def gerar_pdf_status(n, dados_status):
                 [colors.white, colors.HexColor("#f0f0f0")],
             ),
         ]
+
         tbl_esq.setStyle(TableStyle(style_list_esq))
         story.append(tbl_esq)
         story.append(Spacer(1, 0.2 * inch))
@@ -997,6 +1000,7 @@ def gerar_pdf_status(n, dados_status):
                 ),
             )
         )
+
         story.append(
             Paragraph(
                 f"Total de registros: {len(df_dir)}",
@@ -1007,11 +1011,12 @@ def gerar_pdf_status(n, dados_status):
 
         cols_dir = ["Data Mov", "E/S", "Ação", "Deptº"]
         cols_dir = [c for c in cols_dir if c in df_dir.columns]
-
         df_dir_copy = df_dir.copy()
+
         df_dir_copy["Data Mov_dt"] = pd.to_datetime(
             df_dir_copy["Data Mov"], errors="coerce"
         )
+
         df_dir_copy["ordem_acao"] = (
             df_dir_copy["Ação"].astype(str).str.strip() != "FIM DCC"
         ).astype(int)
@@ -1020,23 +1025,27 @@ def gerar_pdf_status(n, dados_status):
             ascending=[False, True],
             na_position="last",
         )
+
         df_dir_copy["Data Mov"] = (
             df_dir_copy["Data Mov_dt"].dt.strftime("%d/%m/%Y").fillna("")
         )
+
         df_dir_copy["Ação"] = df_dir_copy["Ação"].astype(str).str.strip()
         df_dir_copy = df_dir_copy[
             (df_dir_copy["Ação"] != "")
             & (df_dir_copy["Ação"].str.lower() != "none")
             & (df_dir_copy["Ação"].str.lower() != "nan")
             & (df_dir_copy["Ação"].str.lower() != "")
+            & (df_dir_copy["Ação"].str.lower() != "nat")
+            & (df_dir_copy["Ação"].str.lower() != "<na>")
         ]
 
         cols_check = ["Data Mov", "E/S", "Ação", "Deptº"]
         df_dir_copy = df_dir_copy[
             df_dir_copy[cols_check].apply(
                 lambda row: any(
-                    (v_str := str(v).strip())
-                    not in ("", "none", "nan", "", "nat")
+                    (v_str := str(v).strip().lower())
+                    not in ("", "none", "nan", "", "nat", "<na>")
                     for v in row.values
                 ),
                 axis=1,
@@ -1044,6 +1053,7 @@ def gerar_pdf_status(n, dados_status):
         ]
 
         df_dir_filtered = df_dir_copy[cols_dir].copy()
+
         header_dir = cols_dir
         table_data_dir = [header_dir]
 
@@ -1064,7 +1074,6 @@ def gerar_pdf_status(n, dados_status):
             1.0 * inch,
         ]
         col_widths_dir = col_widths_dir[: len(cols_dir)]
-
         tbl_dir = Table(
             table_data_dir,
             colWidths=col_widths_dir,
@@ -1096,12 +1105,12 @@ def gerar_pdf_status(n, dados_status):
                 [colors.white, colors.HexColor("#f0f0f0")],
             ),
         ]
+
         tbl_dir.setStyle(TableStyle(style_list_dir))
         story.append(tbl_dir)
 
     doc.build(story)
     buffer.seek(0)
-
     from dash import dcc
 
     return dcc.send_bytes(buffer.getvalue(), "status_processos_paisagem.pdf")
