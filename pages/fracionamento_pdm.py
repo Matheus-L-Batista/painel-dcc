@@ -600,18 +600,31 @@ def limpar_filtros_limite_itajuba_pdm(n):
 # --------------------------------------------------
 
 
-wrap_style = ParagraphStyle(
-    name="wrap_limite_itajuba_pdm",
+# Estilo para as células de dados (texto preto)
+wrap_style_data_pdm = ParagraphStyle(
+    name="wrap_limite_itajuba_pdm_data",
     fontSize=8,
     leading=10,
     spaceAfter=4,
     alignment=TA_CENTER,
+    textColor=colors.black,
 )
 
+# Estilo para o cabeçalho (texto branco)
+wrap_style_header_pdm = ParagraphStyle(
+    name="wrap_limite_itajuba_pdm_header",
+    fontSize=8,
+    leading=10,
+    spaceAfter=4,
+    alignment=TA_CENTER,
+    textColor=colors.white,
+)
 
-def wrap(text):
-    return Paragraph(str(text), wrap_style)
+def wrap_data_pdm(text):
+    return Paragraph(str(text), wrap_style_data_pdm)
 
+def wrap_header_pdm(text):
+    return Paragraph(str(text), wrap_style_header_pdm)
 
 @dash.callback(
     Output("download_relatorio_limite_itajuba_pdm", "data"),
@@ -784,13 +797,17 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         if col in df_pdf.columns:
             df_pdf[col] = df_pdf[col].apply(fmt_moeda_pdf)
 
-    header = cols
+    df_pdf = df_pdf.fillna("")
+
+    # Cabeçalho com texto branco
+    header = [wrap_header_pdm(col) for col in cols]
     table_data = [header]
 
-    saldo_values = df["Saldo para contratação"].tolist()
+    # Linhas de dados com texto preto
+    saldo_values = df["Saldo para contratação"].fillna(0).tolist()
 
     for _, row in df_pdf[cols].iterrows():
-        linha = [wrap(row[c]) for c in cols]
+        linha = [wrap_data_pdm(row[c]) for c in cols]
         table_data.append(linha)
 
     page_width = pagesize[0] - 0.6 * inch
@@ -808,7 +825,7 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
 
     table_styles = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -820,12 +837,13 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         ("RIGHTPADDING", (0, 0), (-1, -1), 3),
     ]
 
-    # Descrição alinhada à esquerda (coluna 1)
-    for row_idx in range(len(table_data)):
+    # Descrição alinhada à esquerda APENAS nos dados (linhas 1+)
+    for row_idx in range(1, len(table_data)):
         table_styles.append(
             ("ALIGN", (1, row_idx), (1, row_idx), "LEFT")
         )
 
+    # Linhas com saldo negativo em vermelho
     for row_idx, saldo in enumerate(saldo_values, 1):
         if pd.notna(saldo) and saldo <= 0:
             table_styles.append(

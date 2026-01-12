@@ -595,23 +595,35 @@ def limpar_filtros_limite_itajuba(n):
     return None, []
 
 
-# --------------------------------------------------
+
 # PDF
 # --------------------------------------------------
 
-
-wrap_style = ParagraphStyle(
-    name="wrap_limite_itajuba",
+# Estilo para as células de dados (texto preto)
+wrap_style_data = ParagraphStyle(
+    name="wrap_limite_itajuba_data",
     fontSize=8,
     leading=10,
     spaceAfter=4,
     alignment=TA_CENTER,
+    textColor=colors.black,
 )
 
+# Estilo para o cabeçalho (texto branco)
+wrap_style_header = ParagraphStyle(
+    name="wrap_limite_itajuba_header",
+    fontSize=8,
+    leading=10,
+    spaceAfter=4,
+    alignment=TA_CENTER,
+    textColor=colors.white,
+)
 
-def wrap(text):
-    return Paragraph(str(text), wrap_style)
+def wrap_data(text):
+    return Paragraph(str(text), wrap_style_data)
 
+def wrap_header(text):
+    return Paragraph(str(text), wrap_style_header)
 
 @dash.callback(
     Output("download_relatorio_limite_itajuba", "data"),
@@ -627,7 +639,6 @@ def gerar_pdf_limite_itajuba(n, dados):
 
     buffer = BytesIO()
     pagesize = landscape(A4)
-
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
@@ -642,33 +653,24 @@ def gerar_pdf_limite_itajuba(n, dados):
 
     # Data/hora Brasília
     tz_brasilia = timezone("America/Sao_Paulo")
-    data_hora_brasilia = datetime.now(tz_brasilia).strftime(
-        "%d/%m/%Y %H:%M:%S"
-    )
-
+    data_hora_brasilia = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
     data_top_table = Table(
-        [
-            [
-                Paragraph(
-                    data_hora_brasilia,
-                    ParagraphStyle(
-                        "data_topo",
-                        fontSize=9,
-                        alignment=TA_RIGHT,
-                        textColor="#333333",
-                    ),
-                )
-            ]
-        ],
+        [[Paragraph(
+            data_hora_brasilia,
+            ParagraphStyle(
+                "data_topo",
+                fontSize=9,
+                alignment=TA_RIGHT,
+                textColor="#333333",
+            ),
+        )]],
         colWidths=[pagesize[0] - 0.6 * inch],
     )
     data_top_table.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]
-        )
+        TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ])
     )
     story.append(data_top_table)
     story.append(Spacer(1, 0.1 * inch))
@@ -703,18 +705,15 @@ def gerar_pdf_limite_itajuba(n, dados):
                 )
 
             logo_table.setStyle(
-                TableStyle(
-                    [
-                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ]
-                )
+                TableStyle([
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ])
             )
-
             story.append(logo_table)
             story.append(Spacer(1, 0.15 * inch))
 
-    # Título COM QUEBRAS DE LINHA
+    # Título
     titulo_texto = (
         "CONSULTA CATSER<br/>"
         "LIMITE DE GASTO COM DISPENSA DE LICITAÇÃO EM FUNÇÃO DO VALOR<br/>"
@@ -738,20 +737,20 @@ def gerar_pdf_limite_itajuba(n, dados):
         colWidths=[pagesize[0] - 0.6 * inch],
     )
     titulo_table.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ]
-        )
+        TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ])
     )
-
     story.append(titulo_table)
     story.append(Spacer(1, 0.15 * inch))
 
-    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
+    story.append(
+        Paragraph(f"Total de registros: {len(df)}", styles["Normal"])
+    )
     story.append(Spacer(1, 0.1 * inch))
 
+    # Dados da tabela
     cols = [
         COL_CATSER,
         "Descrição",
@@ -759,7 +758,6 @@ def gerar_pdf_limite_itajuba(n, dados):
         "Limite da Dispensa",
         "Saldo para contratação",
     ]
-
     for c in cols:
         if c not in df.columns:
             df[c] = ""
@@ -775,39 +773,37 @@ def gerar_pdf_limite_itajuba(n, dados):
         )
 
     df_pdf = df.copy()
-    for col in [
-        "Valor Empenhado",
-        "Limite da Dispensa",
-        "Saldo para contratação",
-    ]:
+    for col in ["Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]:
         if col in df_pdf.columns:
             df_pdf[col] = df_pdf[col].apply(fmt_moeda_pdf)
 
-    header = cols
+    df_pdf = df_pdf.fillna("")
+
+    # Cabeçalho com texto branco
+    header = [wrap_header(col) for col in cols]
     table_data = [header]
 
-    saldo_values = df["Saldo para contratação"].tolist()
+    # Linhas de dados com texto preto
+    saldo_values = df["Saldo para contratação"].fillna(0).tolist()
 
     for _, row in df_pdf[cols].iterrows():
-        linha = [wrap(row[c]) for c in cols]
+        linha = [wrap_data(row[c]) for c in cols]
         table_data.append(linha)
 
     page_width = pagesize[0] - 0.6 * inch
-
-    # Larguras proporcionais das colunas
     col_widths = [
-        0.9 * inch,  # CATSER
-        page_width - (0.9 + 1.1 + 1.1 + 1.1) * inch,  # Descrição
-        1.1 * inch,  # Valor Empenhado
-        1.1 * inch,  # Limite da Dispensa
-        1.1 * inch,  # Saldo para contratação
+        0.9 * inch,                                          # CATSER
+        page_width - (0.9 + 1.1 + 1.1 + 1.1) * inch,         # Descrição
+        1.1 * inch,                                          # Valor Empenhado
+        1.1 * inch,                                          # Limite da Dispensa
+        1.1 * inch,                                          # Saldo para contratação
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
 
     table_styles = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),  # redundante, mas ok
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -819,38 +815,29 @@ def gerar_pdf_limite_itajuba(n, dados):
         ("RIGHTPADDING", (0, 0), (-1, -1), 3),
     ]
 
-    # Descrição alinhada à esquerda (coluna 1)
-    for row_idx in range(len(table_data)):
-        table_styles.append(
-            ("ALIGN", (1, row_idx), (1, row_idx), "LEFT")
-        )
+    # Descrição alinhada à esquerda nas linhas de dados
+    for row_idx in range(1, len(table_data)):
+        table_styles.append(("ALIGN", (1, row_idx), (1, row_idx), "LEFT"))
 
+    # Linhas com saldo negativo em vermelho
     for row_idx, saldo in enumerate(saldo_values, 1):
         if pd.notna(saldo) and saldo <= 0:
             table_styles.append(
-                (
-                    "BACKGROUND",
-                    (0, row_idx),
-                    (-1, row_idx),
-                    colors.HexColor("#ffcccc"),
-                )
+                ("BACKGROUND", (0, row_idx), (-1, row_idx),
+                 colors.HexColor("#ffcccc"))
             )
             table_styles.append(
-                (
-                    "TEXTCOLOR",
-                    (0, row_idx),
-                    (-1, row_idx),
-                    colors.HexColor("#cc0000"),
-                )
+                ("TEXTCOLOR", (0, row_idx), (-1, row_idx),
+                 colors.HexColor("#cc0000"))
             )
 
     tbl.setStyle(TableStyle(table_styles))
-
     story.append(tbl)
 
     doc.build(story)
     buffer.seek(0)
 
     return dcc.send_bytes(
-        buffer.getvalue(), "limite_gasto_itajuba_catser.pdf"
+        buffer.getvalue(),
+        "limite_gasto_itajuba_catser.pdf",
     )
