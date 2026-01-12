@@ -931,9 +931,7 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
 
     # Data e hora
     tz_brasilia = timezone("America/Sao_Paulo")
-    data_hora_brasilia = datetime.now(tz_brasilia).strftime(
-        "%d/%m/%Y %H:%M:%S"
-    )
+    data_hora_brasilia = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
     data_top_table = Table(
         [
             [
@@ -1137,6 +1135,34 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
             ),
         ]
 
+        # ---- LINHA EM VERMELHO QUANDO SALDO <= 0 ----
+        saldo_col_index = cols_plan.index("Saldo_fmt") if "Saldo_fmt" in cols_plan else None
+
+        if saldo_col_index is not None:
+            # tabela tem header na linha 0, dados começam na 1
+            for row_idx in range(1, len(table_data_plan)):
+                try:
+                    # table_data_plan[row_idx][saldo_col_index] é um Paragraph pelo simple_pdf
+                    saldo_paragraph = table_data_plan[row_idx][saldo_col_index]
+                    saldo_str = saldo_paragraph.text if hasattr(saldo_paragraph, "text") else str(saldo_paragraph)
+                    saldo_str = (
+                        saldo_str.replace("R$", "")
+                        .replace(".", "")
+                        .replace(",", ".")
+                        .strip()
+                    )
+                    saldo_valor = float(saldo_str) if saldo_str not in ("", "-") else 0.0
+
+                    if saldo_valor <= 0:
+                        style_list_plan.append(
+                            ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#ffcccc"))
+                        )
+                        style_list_plan.append(
+                            ("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.HexColor("#cc0000"))
+                        )
+                except (ValueError, IndexError):
+                    pass
+
         tbl_plan.setStyle(TableStyle(style_list_plan))
         story.append(tbl_plan)
         story.append(Spacer(1, 0.2 * inch))
@@ -1242,6 +1268,32 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                 [colors.white, colors.HexColor("#f0f0f0")],
             ),
         ]
+
+        # OPCIONAL: linha em vermelho quando Valor <= 0
+        valor_col_index = cols_proc.index("Valor_fmt") if "Valor_fmt" in cols_proc else None
+
+        if valor_col_index is not None:
+            for row_idx in range(1, len(table_data_proc)):
+                try:
+                    valor_paragraph = table_data_proc[row_idx][valor_col_index]
+                    valor_str = valor_paragraph.text if hasattr(valor_paragraph, "text") else str(valor_paragraph)
+                    valor_str = (
+                        valor_str.replace("R$", "")
+                        .replace(".", "")
+                        .replace(",", ".")
+                        .strip()
+                    )
+                    valor_numerico = float(valor_str) if valor_str not in ("", "-") else 0.0
+
+                    if valor_numerico <= 0:
+                        style_list_proc.append(
+                            ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#ffcccc"))
+                        )
+                        style_list_proc.append(
+                            ("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.HexColor("#cc0000"))
+                        )
+                except (ValueError, IndexError):
+                    pass
 
         tbl_proc.setStyle(TableStyle(style_list_proc))
         story.append(tbl_proc)

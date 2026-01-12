@@ -21,6 +21,7 @@ from reportlab.lib import colors
 from pytz import timezone
 import os
 
+
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
@@ -31,6 +32,7 @@ dash.register_page(
     title="Fiscais",
 )
 
+
 # --------------------------------------------------
 # URL da planilha de Fiscais
 # --------------------------------------------------
@@ -40,6 +42,7 @@ URL_FISCAIS = (
     "gviz/tq?tqx=out:csv&sheet=Fiscais"
 )
 
+
 # nomes originais no CSV (linha 4 é o cabeçalho)
 COL_SETOR = "Setor"
 COL_CONTRATO = "CONTRATO"
@@ -47,6 +50,7 @@ COL_OBJETO = "OBJETO"
 COL_CONTRATADA = "CONTRATADA"
 COL_FINAL_VIG = "Unnamed: 16"  # Final da Vigência
 COL_LINK_COMPRASNET = "COMPRASNET Contratos"
+
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
@@ -136,8 +140,10 @@ def carregar_dados_fiscais():
 
     return df
 
+
 df_fiscais_base = carregar_dados_fiscais()
 SERVIDORES_UNICOS_FIS = getattr(df_fiscais_base, "_lista_servidores_unicos", [])
+
 
 dropdown_style = {
     "color": "black",
@@ -145,6 +151,7 @@ dropdown_style = {
     "marginBottom": "6px",
     "whiteSpace": "normal",
 }
+
 
 # --------------------------------------------------
 # Função auxiliar: filtros em cascata independentes
@@ -218,6 +225,7 @@ def filtrar_fiscais(
     )
 
     return dff
+
 
 # --------------------------------------------------
 # Layout
@@ -450,14 +458,27 @@ layout = html.Div(
                 },
             ],
             style_data_conditional=[
+                # Zebra: linhas pares/ímpares
                 {
-                    "if": {"filter_query": '{Status} = "Vencido"'},
+                    "if": {"row_index": "odd"},
+                    "backgroundColor": "#f0f0f0",
+                },
+                {
+                    "if": {"row_index": "even"},
+                    "backgroundColor": "white",
+                },
+                # Status = Vencido
+                {
+                    "if": {
+                        "filter_query": '{Status} = "Vencido"',
+                    },
                     "backgroundColor": "#ffcccc",
                     "color": "black",
                 },
+                # Status = Próximo do Vencimento
                 {
                     "if": {
-                        "filter_query": '{Status} = "Próximo do Vencimento"'
+                        "filter_query": '{Status} = "Próximo do Vencimento"',
                     },
                     "backgroundColor": "#ffffcc",
                     "color": "black",
@@ -473,6 +494,7 @@ layout = html.Div(
         dcc.Store(id="store_dados_fis"),
     ]
 )
+
 
 # --------------------------------------------------
 # Callback: filtros (tabela + store)
@@ -531,6 +553,7 @@ def atualizar_tabela_fiscais(
     cols = [c for c in cols if c in dff.columns]
 
     return dff[cols].to_dict("records"), dff.to_dict("records")
+
 
 # --------------------------------------------------
 # Callback: opções dos filtros (cascata)
@@ -591,6 +614,7 @@ def atualizar_opcoes_filtros_fis(
 
     return op_servidores, op_contrato, op_contratada
 
+
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
@@ -607,6 +631,7 @@ def atualizar_opcoes_filtros_fis(
 )
 def limpar_filtros_fis(n):
     return None, None, None, None, None, None, None
+
 
 # --------------------------------------------------
 # PDF – estilos
@@ -626,14 +651,17 @@ simple_style = ParagraphStyle(
     alignment=TA_CENTER,
 )
 
+
 def wrap(text):
     return Paragraph(str(text), wrap_style)
+
 
 def simple(text):
     return Paragraph(str(text), simple_style)
 
+
 # --------------------------------------------------
-# Callback: gerar PDF de fiscais
+# Callback: gerar PDF de fiscais (com zebra)
 # --------------------------------------------------
 @dash.callback(
     Output("download_relatorio_fis", "data"),
@@ -823,17 +851,24 @@ def gerar_pdf_fiscais(n, dados_fis):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        # Zebra
+        # Zebra striping: branco e cinza alternados
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
         # Quebra
         ("WORDWRAP", (0, 0), (-1, -1), True),
     ]
 
-    # Cores por status (linha inteira)
+    # Cores por status (linha inteira) – sobrescreve a zebra apenas quando necessário
     status_col_idx = cols.index("Status") if "Status" in cols else -1
     if status_col_idx != -1:
         for row_idx, row_data in enumerate(table_data[1:], start=1):
-            status_value = str(row_data[status_col_idx].text).lower()
+            # row_data[status_col_idx] é um Paragraph; tenta pegar .text
+            status_paragraph = row_data[status_col_idx]
+            status_value = ""
+            try:
+                status_value = str(status_paragraph.text).lower()
+            except Exception:
+                status_value = str(status_paragraph).lower()
+
             if "vencido" in status_value:
                 style_list.append(
                     ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#ffcccc"))
@@ -851,6 +886,7 @@ def gerar_pdf_fiscais(n, dados_fis):
                 style_list.append(
                     ("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.HexColor("#cc8800"))
                 )
+            # Status "Vigente" mantém o padrão branco/cinza
 
     tbl.setStyle(TableStyle(style_list))
     story.append(tbl)
