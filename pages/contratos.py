@@ -3,10 +3,7 @@ from dash import html, dcc, dash_table, Input, Output, State
 import pandas as pd
 from datetime import datetime
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 from io import BytesIO
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -17,10 +14,7 @@ from reportlab.lib import colors
 from pytz import timezone
 import os
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
@@ -31,10 +25,7 @@ dash.register_page(
     title="Contratos",
 )
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # URL da planilha de Contratos
 # --------------------------------------------------
@@ -44,10 +35,7 @@ URL_CONTRATOS = (
     "gviz/tq?tqx=out:csv&sheet=Grupo%20da%20Cont."
 )
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # nomes exatos das colunas originais no CSV
 COL_CONTRATO = "Contrato"
 COL_SETOR = "Setor"
@@ -62,10 +50,7 @@ COL_TERMINO_EXEC = "Término da Execução"
 COL_TERMINO_VIG = "Termino da Vigência"  # igual na planilha
 COL_LINK_COMPRASNET = "Comprasnet Contratos"
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Carga e tratamento dos dados
 # --------------------------------------------------
@@ -116,15 +101,10 @@ def carregar_dados_contratos():
 
     return df
 
-<<<<<<< HEAD
-df_contratos_base = carregar_dados_contratos()
-
-=======
 
 df_contratos_base = carregar_dados_contratos()
 
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Função auxiliar: filtros em cascata independentes
 # --------------------------------------------------
@@ -193,10 +173,7 @@ def filtrar_contratos(
 
     return dff
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 dropdown_style = {
     "color": "black",
     "width": "100%",
@@ -204,10 +181,7 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
@@ -466,20 +440,6 @@ layout = html.Div(
                 },
             ],
             style_data_conditional=[
-<<<<<<< HEAD
-                {
-                    "if": {
-                        "filter_query": '{Status da Vigência} = "Vencido"'
-                    },
-                    "backgroundColor": "#ffcccc",
-                    "color": "black",
-                },
-                {
-                    "if": {
-                        "filter_query": '{Status da Vigência} = "Próximo do Vencimento"'
-                    },
-                    "backgroundColor": "#ffffcc",
-=======
                 # zebra: linhas pares cinza claro, ímpares branco
                 {
                     "if": {"row_index": "even"},
@@ -489,7 +449,6 @@ layout = html.Div(
                 {
                     "if": {"row_index": "odd"},
                     "backgroundColor": "white",
->>>>>>> 5126a19 (Ajusta layout do painel)
                     "color": "black",
                 },
             ],
@@ -504,10 +463,7 @@ layout = html.Div(
     ]
 )
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Callback: filtros (tabela + store)
 # --------------------------------------------------
@@ -570,10 +526,7 @@ def atualizar_tabela_contratos(
 
     return dff[cols].to_dict("records"), dff.to_dict("records")
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Callback: opções dos filtros (cascata)
 # --------------------------------------------------
@@ -605,11 +558,7 @@ def atualizar_opcoes_filtros(
         contrato_texto,
         contrato_drop,
         setor_texto,
-<<<<<<< HEAD
-        setor_drop,
-=======
        setor_drop,
->>>>>>> 5126a19 (Ajusta layout do painel)
         grupo,
         empresa_texto,
         empresa_drop,
@@ -639,10 +588,7 @@ def atualizar_opcoes_filtros(
 
     return op_contrato, op_setor, op_empresa, op_grupo
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
@@ -661,10 +607,7 @@ def atualizar_opcoes_filtros(
 def limpar_filtros_contratos(n):
     return None, None, None, None, None, None, None, None
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 # --------------------------------------------------
 # Callback: gerar PDF de contratos
 # --------------------------------------------------
@@ -683,14 +626,6 @@ simple_style = ParagraphStyle(
     alignment=TA_CENTER,
 )
 
-<<<<<<< HEAD
-def wrap(text):
-    return Paragraph(str(text), wrap_style)
-
-def simple(text):
-    return Paragraph(str(text), simple_style)
-
-=======
 
 def wrap(text):
     return Paragraph(str(text), wrap_style)
@@ -700,7 +635,6 @@ def simple(text):
     return Paragraph(str(text), simple_style)
 
 
->>>>>>> 5126a19 (Ajusta layout do painel)
 @dash.callback(
     Output("download_relatorio_contratos", "data"),
     Input("btn_download_relatorio_contratos", "n_clicks"),
@@ -902,13 +836,8 @@ def gerar_pdf_contratos(n, dados_contratos):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-<<<<<<< HEAD
-        # Zebra
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
-=======
         # Zebra (alternância branco/cinza)
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
->>>>>>> 5126a19 (Ajusta layout do painel)
     ]
 
     # Cores por status
