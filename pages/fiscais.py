@@ -696,7 +696,7 @@ def gerar_pdf_fiscais(n, dados_fis):
         pagesize=pagesize,
         rightMargin=0.3 * inch,
         leftMargin=0.3 * inch,
-        topMargin=1.3 * inch,
+        topMargin=0.2 * inch,
         bottomMargin=0.4 * inch,
     )
 

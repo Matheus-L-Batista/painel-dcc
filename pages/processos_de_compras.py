@@ -1426,7 +1426,7 @@ def gerar_pdf_proc(n, dados_proc):
         pagesize=pagesize,
         rightMargin=0.15 * inch,
         leftMargin=0.15 * inch,
-        topMargin=1.3 * inch,
+        topMargin=0.2 * inch,
         bottomMargin=0.4 * inch,
     )
 

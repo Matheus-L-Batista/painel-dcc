@@ -913,7 +913,7 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         pagesize=pagesize,
         rightMargin=0.15 * inch,
         leftMargin=0.15 * inch,
-        topMargin=1.3 * inch,
+        topMargin=0.2 * inch,
         bottomMargin=0.4 * inch,
     )
 

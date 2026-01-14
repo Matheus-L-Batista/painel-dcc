@@ -667,7 +667,7 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         pagesize=pagesize,
         rightMargin=0.3 * inch,
         leftMargin=0.3 * inch,
-        topMargin=1.3 * inch,
+        topMargin=0.2 * inch,
         bottomMargin=0.4 * inch,
     )
 
