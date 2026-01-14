@@ -501,13 +501,19 @@ layout = html.Div(
                         "zIndex": 5,
                     },
                     style_data_conditional=[
+                        # zebra: linhas ímpares em cinza-claro
+                        {
+                            "if": {"row_index": "odd"},
+                            "backgroundColor": "#f5f5f5",
+                        },
+                        # saldo <= 0 sobrescreve a cor
                         {
                             "if": {
                                 "filter_query": "{Saldo para contratação} <= 0",
                             },
                             "backgroundColor": "#ffcccc",
                             "color": "#cc0000",
-                        }
+                        },
                     ],
                 ),
                 dcc.Store(id="store_dados_limite_itajuba_pdm"),
@@ -826,12 +832,9 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("WORDWRAP", (0, 0), (-1, -1), True),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        # Linhas alternadas: branca e cinza-claro (a partir da linha 1, pois 0 é o cabeçalho)
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
     ]
 
     for row_idx in range(1, len(table_data)):

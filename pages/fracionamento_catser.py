@@ -502,6 +502,12 @@ layout = html.Div(
                         "zIndex": 5,
                     },
                     style_data_conditional=[
+                        # zebra: linhas ímpares em cinza-claro
+                        {
+                            "if": {"row_index": "odd"},
+                            "backgroundColor": "#f5f5f5",
+                        },
+                        # saldo <= 0 continua sobrescrevendo a cor da linha
                         {
                             "if": {
                                 "filter_query": "{Saldo para contratação} <= 0",
@@ -807,11 +813,15 @@ def gerar_pdf_limite_itajuba(n, dados):
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
+        # Linhas alternadas: branca e cinza-claro (a partir da linha 1, pois 0 é o cabeçalho)
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
     ]
 
+    # Descrição alinhada à esquerda
     for i in range(1, len(table_data)):
         table_styles.append(("ALIGN", (1, i), (1, i), "LEFT"))
 
+    # Linhas com saldo <= 0 em vermelho
     for i, saldo in enumerate(saldo_values, 1):
         if saldo <= 0:
             table_styles.append(
