@@ -3,6 +3,7 @@ from dash import html, dcc, dash_table, Input, Output, State
 import pandas as pd
 from datetime import datetime
 
+
 from io import BytesIO
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -21,6 +22,7 @@ from pytz import timezone
 import os
 
 
+
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
@@ -32,6 +34,7 @@ dash.register_page(
 )
 
 
+
 # --------------------------------------------------
 # URL da planilha de Contratos
 # --------------------------------------------------
@@ -40,6 +43,7 @@ URL_CONTRATOS = (
     "17nBhvSoCeK3hNgCj2S57q3pF2Uxj6iBpZDvCX481KcU/"
     "gviz/tq?tqx=out:csv&sheet=Grupo%20da%20Cont."
 )
+
 
 # nomes exatos das colunas originais no CSV
 COL_CONTRATO = "Contrato"
@@ -56,6 +60,7 @@ COL_TERMINO_VIG = "Termino da Vigência"  # igual na planilha
 COL_LINK_COMPRASNET = "Comprasnet Contratos"
 
 
+
 # --------------------------------------------------
 # Carga e tratamento dos dados
 # --------------------------------------------------
@@ -63,8 +68,10 @@ def carregar_dados_contratos():
     df = pd.read_csv(URL_CONTRATOS, header=0)
     df.columns = [c.strip() for c in df.columns]
 
+
     if COL_LINK_COMPRASNET not in df.columns:
         df[COL_LINK_COMPRASNET] = ""
+
 
     df = df.rename(
         columns={
@@ -80,12 +87,15 @@ def carregar_dados_contratos():
         }
     )
 
+
     # Converte datas para datetime para cálculo do status
     for col in ["Início da Vigência", "Término da Execução", "Término da Vigência"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
 
+
     hoje = datetime.now().date()
+
 
     def calcular_status(data_termino_exec):
         if pd.isna(data_termino_exec):
@@ -97,25 +107,29 @@ def carregar_dados_contratos():
             return "Vencido"
         return "Próximo do Vencimento"
 
+
     df["Status da Vigência"] = df["Término da Execução"].apply(calcular_status)
+
 
     # Formata datas para string dd/mm/aaaa para exibição
     for col in ["Início da Vigência", "Término da Execução", "Término da Vigência"]:
         if col in df.columns:
             df[col] = df[col].dt.strftime("%d/%m/%Y").fillna("")
 
+
     return df
 
 
+
 df_contratos_base = carregar_dados_contratos()
+
 
 
 # --------------------------------------------------
 # Função auxiliar: filtros em cascata independentes
 # --------------------------------------------------
 def filtrar_contratos(
-    contrato_texto,
-    contrato_drop,
+    objeto_texto,
     setor_texto,
     setor_drop,
     grupo,
@@ -125,16 +139,14 @@ def filtrar_contratos(
 ):
     dff = df_contratos_base.copy()
 
-    # Contrato (texto)
-    if contrato_texto and str(contrato_texto).strip():
-        termo = str(contrato_texto).strip().lower()
+
+    # Objeto (texto)
+    if objeto_texto and str(objeto_texto).strip():
+        termo = str(objeto_texto).strip().lower()
         dff = dff[
-            dff["Contrato"].astype(str).str.lower().str.contains(termo, na=False)
+            dff["Objeto"].astype(str).str.lower().str.contains(termo, na=False)
         ]
 
-    # Contrato (dropdown)
-    if contrato_drop:
-        dff = dff[dff["Contrato"] == contrato_drop]
 
     # Setor (texto)
     if setor_texto and str(setor_texto).strip():
@@ -142,13 +154,16 @@ def filtrar_contratos(
         dff = dff["Setor"].astype(str).str.lower().str.contains(termo, na=False)
         dff = df_contratos_base.loc[dff]
 
+
     # Setor (dropdown)
     if setor_drop:
         dff = dff[dff["Setor"] == setor_drop]
 
+
     # Grupo
     if grupo:
         dff = dff[dff["Grupo"] == grupo]
+
 
     # Empresa (texto)
     if empresa_texto and str(empresa_texto).strip():
@@ -160,16 +175,20 @@ def filtrar_contratos(
             .str.contains(termo, na=False)
         ]
 
+
     # Empresa (dropdown)
     if empresa_drop:
         dff = dff[dff["Empresa Contratada"] == empresa_drop]
+
 
     # Status
     if status_vig:
         dff = dff[dff["Status da Vigência"] == status_vig]
 
+
     # remove linhas sem texto em Status da Vigência
     dff = dff[dff["Status da Vigência"].astype(str).str.strip() != ""]
+
 
     # Ordena por Término da Execução (mais recente em cima)
     dff["_termino_exec_dt"] = pd.to_datetime(
@@ -179,7 +198,9 @@ def filtrar_contratos(
         columns=["_termino_exec_dt"]
     )
 
+
     return dff
+
 
 
 dropdown_style = {
@@ -188,6 +209,7 @@ dropdown_style = {
     "marginBottom": "6px",
     "whiteSpace": "normal",
 }
+
 
 # --------------------------------------------------
 # Estilo dos botões (fundo azul, texto branco)
@@ -205,6 +227,7 @@ botao_style = {
 }
 
 
+
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
@@ -214,7 +237,7 @@ layout = html.Div(
             id="barra_filtros_contratos",
             className="filtros-sticky",
             children=[
-                # Linha 1: Contrato + Setor (texto e dropdown)
+                # Linha 1: Objeto (texto), Setor (texto e dropdown)
                 html.Div(
                     style={
                         "display": "flex",
@@ -238,22 +261,12 @@ layout = html.Div(
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
-                                html.Label("Contrato"),
-                                dcc.Dropdown(
-                                    id="filtro_contrato_dropdown",
-                                    options=[
-                                        {"label": c, "value": c}
-                                        for c in sorted(
-                                            df_contratos_base["Contrato"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(c).strip() != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Todos",
-                                    clearable=True,
-                                    style=dropdown_style,
+                                html.Label("Objeto (digitação)"),
+                                dcc.Input(
+                                    id="filtro_objeto_texto",
+                                    type="text",
+                                    placeholder="Digite parte do objeto",
+                                    style={"width": "100%", "marginBottom": "6px"},
                                 ),
                             ],
                         ),
@@ -412,14 +425,11 @@ layout = html.Div(
             ],
         ),
 
+
         dash_table.DataTable(
             id="tabela_contratos",
             columns=[
-                {
-                    "name": "Contrato",
-                    "id": "Contrato_markdown",
-                    "presentation": "markdown",
-                },
+                {"name": "Contrato", "id": "Contrato"},
                 {"name": "Setor", "id": "Setor"},
                 {"name": "Grupo", "id": "Grupo"},
                 {"name": "Objeto", "id": "Objeto"},
@@ -458,20 +468,34 @@ layout = html.Div(
             },
             style_cell_conditional=[
                 {
-                    "if": {"column_id": "Contrato_markdown"},
+                    "if": {"column_id": "Contrato"},
                     "textAlign": "center",
                 },
             ],
             style_data_conditional=[
-                # zebra: linhas pares cinza claro, ímpares branco
-                {
-                    "if": {"row_index": "even"},
-                    "backgroundColor": "#f5f5f5",
-                    "color": "black",
-                },
+                # Zebra: linhas pares/ímpares
                 {
                     "if": {"row_index": "odd"},
+                    "backgroundColor": "#f0f0f0",
+                },
+                {
+                    "if": {"row_index": "even"},
                     "backgroundColor": "white",
+                },
+                # Status = Vencido
+                {
+                    "if": {
+                        "filter_query": '{Status da Vigência} = "Vencido"',
+                    },
+                    "backgroundColor": "#ffcccc",
+                    "color": "black",
+                },
+                # Status = Próximo do Vencimento
+                {
+                    "if": {
+                        "filter_query": '{Status da Vigência} = "Próximo do Vencimento"',
+                    },
+                    "backgroundColor": "#ffffcc",
                     "color": "black",
                 },
             ],
@@ -487,14 +511,14 @@ layout = html.Div(
 )
 
 
+
 # --------------------------------------------------
 # Callback: filtros (tabela + store)
 # --------------------------------------------------
 @dash.callback(
     Output("tabela_contratos", "data"),
     Output("store_dados_contratos", "data"),
-    Input("filtro_contrato_texto", "value"),
-    Input("filtro_contrato_dropdown", "value"),
+    Input("filtro_objeto_texto", "value"),
     Input("filtro_setor_texto_ct", "value"),
     Input("filtro_setor_dropdown_ct", "value"),
     Input("filtro_grupo", "value"),
@@ -503,8 +527,7 @@ layout = html.Div(
     Input("filtro_status_vig", "value"),
 )
 def atualizar_tabela_contratos(
-    contrato_texto,
-    contrato_drop,
+    objeto_texto,
     setor_texto,
     setor_drop,
     grupo,
@@ -513,8 +536,7 @@ def atualizar_tabela_contratos(
     status_vig,
 ):
     dff = filtrar_contratos(
-        contrato_texto,
-        contrato_drop,
+        objeto_texto,
         setor_texto,
         setor_drop,
         grupo,
@@ -523,19 +545,10 @@ def atualizar_tabela_contratos(
         status_vig,
     )
 
-    def mk_link(row):
-        url = row.get("Link Comprasnet")
-        contrato = row.get("Contrato")
-        if isinstance(url, str) and url.strip() and isinstance(contrato, str):
-            return f"[{contrato}]({url.strip()})"
-        return ""
-
     dff = dff.copy()
-    dff["Contrato_markdown"] = dff.apply(mk_link, axis=1)
-    dff = dff[dff["Contrato_markdown"].str.strip() != ""]
 
     cols = [
-        "Contrato_markdown",
+        "Contrato",
         "Setor",
         "Grupo",
         "Objeto",
@@ -550,16 +563,15 @@ def atualizar_tabela_contratos(
     return dff[cols].to_dict("records"), dff.to_dict("records")
 
 
+
 # --------------------------------------------------
 # Callback: opções dos filtros (cascata)
 # --------------------------------------------------
 @dash.callback(
-    Output("filtro_contrato_dropdown", "options"),
     Output("filtro_setor_dropdown_ct", "options"),
     Output("filtro_empresa", "options"),
     Output("filtro_grupo", "options"),
-    Input("filtro_contrato_texto", "value"),
-    Input("filtro_contrato_dropdown", "value"),
+    Input("filtro_objeto_texto", "value"),
     Input("filtro_setor_texto_ct", "value"),
     Input("filtro_setor_dropdown_ct", "value"),
     Input("filtro_grupo", "value"),
@@ -568,8 +580,7 @@ def atualizar_tabela_contratos(
     Input("filtro_status_vig", "value"),
 )
 def atualizar_opcoes_filtros(
-    contrato_texto,
-    contrato_drop,
+    objeto_texto,
     setor_texto,
     setor_drop,
     grupo,
@@ -578,8 +589,7 @@ def atualizar_opcoes_filtros(
     status_vig,
 ):
     dff = filtrar_contratos(
-        contrato_texto,
-        contrato_drop,
+        objeto_texto,
         setor_texto,
         setor_drop,
         grupo,
@@ -588,11 +598,6 @@ def atualizar_opcoes_filtros(
         status_vig,
     )
 
-    op_contrato = [
-        {"label": c, "value": c}
-        for c in sorted(dff["Contrato"].dropna().unique())
-        if str(c).strip()
-    ]
     op_setor = [
         {"label": s, "value": s}
         for s in sorted(dff["Setor"].dropna().unique())
@@ -609,15 +614,15 @@ def atualizar_opcoes_filtros(
         if str(g).strip()
     ]
 
-    return op_contrato, op_setor, op_empresa, op_grupo
+    return op_setor, op_empresa, op_grupo
+
 
 
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
 @dash.callback(
-    Output("filtro_contrato_texto", "value"),
-    Output("filtro_contrato_dropdown", "value"),
+    Output("filtro_objeto_texto", "value"),
     Output("filtro_setor_texto_ct", "value"),
     Output("filtro_setor_dropdown_ct", "value"),
     Output("filtro_grupo", "value"),
@@ -628,7 +633,8 @@ def atualizar_opcoes_filtros(
     prevent_initial_call=True,
 )
 def limpar_filtros_contratos(n):
-    return None, None, None, None, None, None, None, None
+    return None, None, None, None, None, None, None
+
 
 
 # --------------------------------------------------
@@ -642,6 +648,7 @@ wrap_style_data = ParagraphStyle(
     textColor=colors.black,
 )
 
+
 wrap_style_header = ParagraphStyle(
     name="wrap_contratos_header",
     fontSize=7,
@@ -651,12 +658,15 @@ wrap_style_header = ParagraphStyle(
 )
 
 
+
 def wrap_data(text):
     return Paragraph(str(text), wrap_style_data)
 
 
+
 def wrap_header(text):
     return Paragraph(str(text), wrap_style_header)
+
 
 
 # --------------------------------------------------
@@ -837,7 +847,7 @@ def gerar_pdf_contratos(n, dados_contratos):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
     ]
 
     # Cores por status
@@ -850,7 +860,7 @@ def gerar_pdf_contratos(n, dados_contratos):
             table_styles.append(
                 ("TEXTCOLOR", (0, i), (-1, i), colors.HexColor("#cc0000"))
             )
-        elif "próximo do vencimento" in status_str:
+        elif "próximo do vencimento" in status_str or "proximo do vencimento" in status_str:
             table_styles.append(
                 ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffffcc"))
             )
@@ -866,4 +876,4 @@ def gerar_pdf_contratos(n, dados_contratos):
 
     return dcc.send_bytes(
         buffer.getvalue(), 
-        f"relatorio_contratos_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"),
+        f"relatorio_contratos_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf")
