@@ -12,7 +12,6 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     Image,
-    PageBreak,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
@@ -248,7 +247,7 @@ tabela_processos_unida["Valor"] = tabela_processos_unida["Valor"].apply(
 # --------------------------------------------------
 layout = html.Div(
     children=[
-        # Barra de filtros
+        # Barra de filtros (sobrepõe as tabelas)
         html.Div(
             id="barra_filtros_pca",
             className="filtros-sticky",
@@ -258,7 +257,6 @@ layout = html.Div(
                 "backgroundColor": "white",
             },
             children=[
-                # Linha 1 de filtros
                 html.Div(
                     style={
                         "display": "flex",
@@ -367,7 +365,6 @@ layout = html.Div(
                         ),
                     ],
                 ),
-                # Linha 2: botões + cartões
                 html.Div(
                     style={
                         "display": "flex",
@@ -449,6 +446,7 @@ layout = html.Div(
                 "marginTop": "10px",
             },
             children=[
+                # Planejamento
                 html.Div(
                     style={
                         "flex": "1 1 50%",
@@ -510,60 +508,16 @@ layout = html.Div(
                                 "whiteSpace": "normal",
                             },
                             style_cell_conditional=[
-                                {
-                                    "if": {"column_id": "DFD"},
-                                    "width": "6%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Área requisitante"
-                                    },
-                                    "width": "12%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Material ou Serviço"
-                                    },
-                                    "width": "10%",
-                                },
-                                {
-                                    "if": {"column_id": "Item"},
-                                    "width": "5%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Nome Classe/Grupo"
-                                    },
-                                    "width": "20%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Código PDM material"
-                                    },
-                                    "width": "10%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Nome do PDM material"
-                                    },
-                                    "width": "16%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Planejado_fmt"
-                                    },
-                                    "width": "7%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Executado_fmt"
-                                    },
-                                    "width": "7%",
-                                },
-                                {
-                                    "if": {"column_id": "Saldo_fmt"},
-                                    "width": "8%",
-                                },
+                                {"if": {"column_id": "DFD"}, "minWidth": 70, "maxWidth": 80},
+                                {"if": {"column_id": "Área requisitante"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "Material ou Serviço"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "Item"}, "minWidth": 50, "maxWidth": 60},
+                                {"if": {"column_id": "Nome Classe/Grupo"}, "minWidth": 240, "maxWidth": 280},
+                                {"if": {"column_id": "Código PDM material"}, "minWidth": 90, "maxWidth": 100},
+                                {"if": {"column_id": "Nome do PDM material"}, "minWidth": 180, "maxWidth": 220},
+                                {"if": {"column_id": "Planejado_fmt"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "Executado_fmt"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "Saldo_fmt"}, "minWidth": 110, "maxWidth": 130},
                             ],
                             style_header={
                                 "fontWeight": "bold",
@@ -572,15 +526,14 @@ layout = html.Div(
                             },
                             style_data_conditional=[
                                 {
-                                    "if": {
-                                        "filter_query": "{Saldo_num} <= 0"
-                                    },
+                                    "if": {"filter_query": "{Saldo_num} <= 0"},
                                     "backgroundColor": "#ffcccc",
                                 },
                             ],
                         ),
                     ],
                 ),
+                # Processos vinculados
                 html.Div(
                     style={
                         "flex": "1 1 50%",
@@ -628,46 +581,24 @@ layout = html.Div(
                                 "whiteSpace": "normal",
                             },
                             style_cell_conditional=[
-                                {
-                                    "if": {"column_id": "DFD"},
-                                    "width": "10%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Área requisitante"
-                                    },
-                                    "width": "12%",
-                                },
-                                {
-                                    "if": {
-                                        "column_id": "Material ou Serviço"
-                                    },
-                                    "width": "10%",
-                                },
-                                {
-                                    "if": {"column_id": "Item"},
-                                    "width": "6%",
-                                },
-                                {
-                                    "if": {"column_id": "Processo"},
-                                    "width": "12%",
-                                },
+                                {"if": {"column_id": "DFD"}, "minWidth": 80, "maxWidth": 90},
+                                {"if": {"column_id": "Área requisitante"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "Material ou Serviço"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "Item"}, "minWidth": 50, "maxWidth": 60},
+                                {"if": {"column_id": "Processo"}, "minWidth": 180, "maxWidth": 220},
                                 {
                                     "if": {"column_id": "Objeto"},
-                                    "width": "25%",
+                                    "minWidth": 260,
+                                    "maxWidth": 320,
                                     "textAlign": "left",
                                 },
                                 {
-                                    "if": {
-                                        "column_id": "Observações"
-                                    },
-                                    "width": "15%",
+                                    "if": {"column_id": "Observações"},
+                                    "minWidth": 220,
+                                    "maxWidth": 280,
                                     "textAlign": "left",
                                 },
-                                {
-                                    "if": {"column_id": "Valor_fmt"},
-                                    "width": "10%",
-                                },
+                                {"if": {"column_id": "Valor_fmt"}, "minWidth": 110, "maxWidth": 130},
                             ],
                             style_header={
                                 "fontWeight": "bold",
@@ -753,7 +684,7 @@ def atualizar_tabelas_pca(
         dff_plan = dff_plan[dff_plan["Material ou Serviço"] == tipo]
         dff_proc = dff_proc[dff_proc["Material ou Serviço"] == tipo]
 
-    # remove linhas sem processo da tabela de processos
+    # remove linhas sem processo
     dff_proc = dff_proc[
         (dff_proc["Processo"].astype(str).str.strip() != "")
         & (
@@ -773,36 +704,12 @@ def atualizar_tabelas_pca(
         .astype(str)
         .apply(lambda x: str(int(float(x))) if x not in ["", "nan"] else "")
     )
-
     dff_proc["Item"] = (
         dff_proc["Item"]
         .fillna("")
         .astype(str)
         .apply(lambda x: str(int(float(x))) if x not in ["", "nan"] else "")
     )
-
-    # remover linhas com '*' em colunas principais
-    cols_limpar_plan = [
-        "DFD",
-        "Área requisitante",
-        "Material ou Serviço",
-        "Item",
-        "Nome Classe/Grupo",
-    ]
-    for c in cols_limpar_plan:
-        if c in dff_plan.columns:
-            dff_plan = dff_plan[dff_plan[c] != "*"]
-
-    cols_limpar_proc = [
-        "DFD",
-        "Área requisitante",
-        "Material ou Serviço",
-        "Item",
-        "Processo",
-    ]
-    for c in cols_limpar_proc:
-        if c in dff_proc.columns:
-            dff_proc = dff_proc[dff_proc[c] != "*"]
 
     dff_plan["Saldo_num"] = dff_plan["Saldo"]
 
@@ -879,7 +786,6 @@ def atualizar_tabelas_pca(
             html.Div("Planejado"),
         ]
     )
-
     card_executado = html.Div(
         [
             html.Div(
@@ -893,7 +799,6 @@ def atualizar_tabelas_pca(
             html.Div("Executado"),
         ]
     )
-
     card_saldo = html.Div(
         [
             html.Div(
@@ -988,7 +893,6 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
     styles = getSampleStyleSheet()
     story = []
 
-    # Data e hora
     tz_brasilia = timezone("America/Sao_Paulo")
     data_hora_brasilia = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
     data_top_table = Table(
@@ -1020,25 +924,21 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
     story.append(data_top_table)
     story.append(Spacer(1, 0.1 * inch))
 
-    # Cabeçalho
     logo_esq = (
         Image("assets/brasaobrasil.png", 1.2 * inch, 1.2 * inch)
         if os.path.exists("assets/brasaobrasil.png")
         else ""
     )
-
     logo_dir = (
         Image("assets/simbolo_RGB.png", 1.2 * inch, 1.2 * inch)
         if os.path.exists("assets/simbolo_RGB.png")
         else ""
     )
-
     texto_instituicao = (
         "<b><font color='#0b2b57' size=13>Ministério da Educação</font></b><br/>"
         "<b><font color='#0b2b57' size=13>Universidade Federal de Itajubá</font></b><br/>"
         "<font color='#0b2b57' size=11>Diretoria de Compras e Contratos</font>"
     )
-
     instituicao = Paragraph(
         texto_instituicao,
         ParagraphStyle(
@@ -1047,16 +947,10 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
             leading=16,
         ),
     )
-
     cabecalho = Table(
         [[logo_esq, instituicao, logo_dir]],
-        colWidths=[
-            1.4 * inch,
-            4.2 * inch,
-            1.4 * inch,
-        ],
+        colWidths=[1.4 * inch, 4.2 * inch, 1.4 * inch],
     )
-
     cabecalho.setStyle(
         TableStyle(
             [
@@ -1067,7 +961,6 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
             ]
         )
     )
-
     story.append(cabecalho)
     story.append(Spacer(1, 0.25 * inch))
 
@@ -1081,14 +974,11 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
             textColor=colors.black,
         ),
     )
-
     story.append(titulo)
     story.append(Spacer(1, 0.2 * inch))
 
-    # TABELA 1: PLANEJAMENTO
     if dados_planejamento:
         df_plan = pd.DataFrame(dados_planejamento)
-
         story.append(
             Paragraph(
                 "PLANEJAMENTO (PCA)",
@@ -1102,14 +992,12 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                 ),
             )
         )
-
         story.append(
             Paragraph(
                 f"Total de registros: {len(df_plan)}",
                 styles["Normal"],
             )
         )
-
         story.append(Spacer(1, 0.08 * inch))
 
         cols_plan = [
@@ -1122,7 +1010,6 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
             "Executado_fmt",
             "Saldo_fmt",
         ]
-
         cols_plan = [c for c in cols_plan if c in df_plan.columns]
         df_plan_filtered = df_plan[cols_plan].copy()
 
@@ -1158,11 +1045,9 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
             0.95 * inch,
             0.95 * inch,
         ]
-
         tbl_plan = Table(
             table_data_plan, colWidths=col_widths_plan, repeatRows=1
         )
-
         style_list_plan = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -1189,7 +1074,6 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         saldo_col_index = (
             cols_plan.index("Saldo_fmt") if "Saldo_fmt" in cols_plan else None
         )
-
         if saldo_col_index is not None:
             for row_idx in range(1, len(table_data_plan)):
                 try:
@@ -1206,7 +1090,6 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                     saldo_valor = (
                         float(saldo_str) if saldo_str not in ("", "-") else 0.0
                     )
-
                     if saldo_valor <= 0:
                         style_list_plan.append(
                             (
@@ -1231,10 +1114,8 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         story.append(tbl_plan)
         story.append(Spacer(1, 0.2 * inch))
 
-    # TABELA 2: PROCESSOS VINCULADOS
     if dados_processos:
         df_proc = pd.DataFrame(dados_processos)
-
         story.append(
             Paragraph(
                 "PROCESSOS VINCULADOS AO PCA",
@@ -1248,14 +1129,12 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                 ),
             )
         )
-
         story.append(
             Paragraph(
                 f"Total de registros: {len(df_proc)}",
                 styles["Normal"],
             )
         )
-
         story.append(Spacer(1, 0.08 * inch))
 
         cols_proc = [
@@ -1303,11 +1182,9 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
             2.0 * inch,
             0.95 * inch,
         ]
-
         tbl_proc = Table(
             table_data_proc, colWidths=col_widths_proc, repeatRows=1
         )
-
         style_list_proc = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -1334,7 +1211,6 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         valor_col_index = (
             cols_proc.index("Valor_fmt") if "Valor_fmt" in cols_proc else None
         )
-
         if valor_col_index is not None:
             for row_idx in range(1, len(table_data_proc)):
                 try:
@@ -1349,11 +1225,8 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                         .strip()
                     )
                     valor_numerico = (
-                        float(valor_str)
-                        if valor_str not in ("", "-")
-                        else 0.0
+                        float(valor_str) if valor_str not in ("", "-") else 0.0
                     )
-
                     if valor_numerico <= 0:
                         style_list_proc.append(
                             (
@@ -1380,9 +1253,10 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
     doc.build(story)
     buffer.seek(0)
 
-    nome_arquivo = f"relatorio_pca_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
-
     def escrever_bytes(f):
         f.write(buffer.getvalue())
 
-    return dcc.send_bytes(escrever_bytes, nome_arquivo)
+    return dcc.send_bytes(
+        escrever_bytes,
+        f"relatorio_pca_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf",
+    )
