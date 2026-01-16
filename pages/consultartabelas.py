@@ -17,18 +17,19 @@ dash.register_page(
 # --------------------------------------------------
 # URL da planilha (ABA SEM ACENTO NA URL)
 # --------------------------------------------------
-URL_PORTARIAS = (
+URL_BI_EXTRATO = (
     "https://docs.google.com/spreadsheets/d/"
-    "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
-    "gviz/tq?tqx=out:csv&sheet=Limite%20de%20Gasto%20-%20Itajub%C3%A1"
+    "17nBhvSoCeK3hNgCj2S57q3pF2Uxj6iBpZDvCX481KcU/"
+    "gviz/tq?tqx=out:csv&sheet=BI%20Extrato"
 )
+
 
 
 # --------------------------------------------------
 # Função de carga dos dados
 # --------------------------------------------------
 def carregar_dados_portarias():
-    df = pd.read_csv(URL_PORTARIAS)
+    df = pd.read_csv(URL_BI_EXTRATO)
     df.columns = [c.strip() for c in df.columns]
     return df
 

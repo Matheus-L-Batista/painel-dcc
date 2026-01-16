@@ -965,7 +965,7 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
     story.append(Spacer(1, 0.25 * inch))
 
     titulo = Paragraph(
-        "RELATÓRIO DE PLANEJAMENTO DE CONTRATAÇÃO ANUAL (PCA)<br/>",
+        "RELATÓRIO DE PLANEJAMENTO DE CONTRATAÇÃO ANUAL (PCA) 2026<br/>",
         ParagraphStyle(
             "titulo_fiscais",
             alignment=TA_CENTER,
