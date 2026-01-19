@@ -18,7 +18,8 @@ menu_links = [
     {"label": "Fiscais", "href": "/fiscais"},
     {"label": "Plano de Contratação Anual", "href": "/pca"},
     {"label": "Controle de Atas", "href": "/atas"},
-#   {"label": "Extrato", "href": "/extrato-contrato"},
+    {"label": "Extrato do Contrato", "href": "/extrato-contrato"},
+   # {"label": "tabela", "href": "/consultartabelas"},
 
 ]
 
