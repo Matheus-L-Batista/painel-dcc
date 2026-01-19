@@ -8,7 +8,7 @@ from reportlab.platypus import (
     Spacer, 
     Table, 
     TableStyle, 
-    PageBreak, 
+    PageBreak,
     Image,
 )
 from reportlab.lib.pagesizes import A4
@@ -150,8 +150,8 @@ for c in cols_contrato_info + cols_contrato_valores + cols_garantia:
     if c not in df_extrato_base.columns:
         df_extrato_base[c] = None
 
-def gerar_grupo_fiscalizacao(df_local, indice: int) -> pd.DataFrame:
-    """Gera dataframe de fiscalização para um índice específico"""
+def gerar_grupo_fiscalizacao(df_local, indice):
+    """Gera dataframe de fiscalização para um índice específico (0-9 para 10 duplas)"""
     if indice == 0:
         col_fisc = "Fiscalização"
         col_serv = "Servidor"
@@ -173,31 +173,8 @@ def gerar_grupo_fiscalizacao(df_local, indice: int) -> pd.DataFrame:
         columns={
             col_fisc: "Fiscalização",
             col_serv: "Servidor",
-            col_fisc_subst: "Fiscalização_subst",
-            col_serv_subst: "Servidor_subst",
-        }
-    )
-
-def gerar_grupo_alteracao(df_local, indice: int) -> pd.DataFrame:
-    """Gera dataframe de alteração para um índice específico"""
-    suf = "" if indice == 1 else f".{indice-1}"
-    col_tipo = f"Tipo{suf}"
-    col_vig = f"Vigência{suf}"
-    col_valor = f"Valor{suf}"
-    col_valor_at = f"Valor Atualizado{suf}"
-    
-    colunas_originais = [col_tipo, col_vig, col_valor, col_valor_at]
-    for c in colunas_originais:
-        if c not in df_local.columns:
-            df_local[c] = None
-    
-    tabela_sel = df_local[colunas_originais].copy()
-    return tabela_sel.rename(
-        columns={
-            col_tipo: "Tipo",
-            col_vig: "Vigência",
-            col_valor: "Valor",
-            col_valor_at: "Valor Atualizado",
+            col_fisc_subst: "Fiscalização (subst.)",
+            col_serv_subst: "Servidor (subst.)",
         }
     )
 
@@ -384,7 +361,7 @@ layout = html.Div(
                     ],
                 ),
 
-                # OBJETO E COMPRASNET NA MESMA LINHA (3/4 e 1/4)
+                # OBJETO E COMPRASNET NA MESMA LINHA
                 html.Div(
                     style={
                         "display": "flex",
@@ -465,12 +442,6 @@ layout = html.Div(
                                         "fontSize": "12px",
                                         "whiteSpace": "normal",
                                     },
-                                    style_data_conditional=[
-                                        {
-                                            "if": {"column_id": "Comprasnet_link"},
-                                            "textAlign": "center",
-                                        }
-                                    ],
                                     style_header={
                                         "fontWeight": "bold",
                                         "backgroundColor": "#d9d9d9",
@@ -483,7 +454,7 @@ layout = html.Div(
                     ],
                 ),
 
-                # FISCALIZAÇÃO
+                # FISCALIZAÇÃO - APENAS COM DADOS (SEM LINHAS BRANCAS)
                 html.Div(
                     style={
                         "flex": "1 1 100%",
@@ -508,31 +479,39 @@ layout = html.Div(
                             columns=[
                                 {"name": "Fiscalização", "id": "Fiscalização"},
                                 {"name": "Servidor", "id": "Servidor"},
-                                {"name": "Fiscalização (subst.)", "id": "Fiscalização_subst"},
-                                {"name": "Servidor (subst.)", "id": "Servidor_subst"},
+                                {"name": "Fiscalização (subst.)", "id": "Fiscalização (subst.)"},
+                                {"name": "Servidor (subst.)", "id": "Servidor (subst.)"},
                             ],
                             data=[],
                             fixed_rows={"headers": True},
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
-                                "maxHeight": "320px",
+                                "maxHeight": "400px",
                                 "width": "100%",
                                 "position": "relative",
                                 "zIndex": 1,
                             },
                             style_cell={
-                                "textAlign": "center",
-                                "padding": "6px",
+                                "textAlign": "left",
+                                "padding": "8px",
                                 "fontSize": "12px",
                                 "whiteSpace": "normal",
+                                "minWidth": "120px",
                             },
                             style_header={
                                 "fontWeight": "bold",
-                                "backgroundColor": "#d9d9d9",
-                                "color": "black",
+                                "backgroundColor": "#0b2b57",
+                                "color": "white",
                                 "textAlign": "center",
+                                "padding": "8px",
                             },
+                            style_data_conditional=[
+                                {
+                                    "if": {"row_index": "odd"},
+                                    "backgroundColor": "#f9f9f9",
+                                }
+                            ],
                         ),
                     ],
                 ),
@@ -587,7 +566,7 @@ layout = html.Div(
                     ],
                 ),
 
-                # EVOLUÇÃO
+                # EVOLUÇÃO - COM COLUNA ALTERAÇÃO E TIPO
                 html.Div(
                     style={
                         "flex": "1 1 100%",
@@ -611,6 +590,7 @@ layout = html.Div(
                         dash_table.DataTable(
                             id="tabela_extrato_evolucao",
                             columns=[
+                                {"name": "Alteração", "id": "Alteração"},
                                 {"name": "Tipo", "id": "Tipo"},
                                 {"name": "Vigência", "id": "Vigência"},
                                 {"name": "Valor", "id": "Valor_fmt"},
@@ -621,17 +601,25 @@ layout = html.Div(
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
-                                "maxHeight": "360px",
+                                "maxHeight": "500px",
                                 "width": "100%",
                                 "position": "relative",
                                 "zIndex": 1,
                             },
                             style_cell={
                                 "textAlign": "center",
-                                "padding": "6px",
-                                "fontSize": "12px",
+                                "padding": "4px",
+                                "fontSize": "11px",
                                 "whiteSpace": "normal",
+                                "minWidth": "0",
                             },
+                            style_cell_conditional=[
+                                {"if": {"column_id": "Alteração"}, "width": "15%"},
+                                {"if": {"column_id": "Tipo"}, "width": "25%"},
+                                {"if": {"column_id": "Vigência"}, "width": "15%"},
+                                {"if": {"column_id": "Valor_fmt"}, "width": "22.5%"},
+                                {"if": {"column_id": "Valor Atualizado_fmt"}, "width": "22.5%"},
+                            ],
                             style_header={
                                 "fontWeight": "bold",
                                 "backgroundColor": "#d9d9d9",
@@ -762,7 +750,7 @@ def adicionar_cabecalho_relatorio(story, num_contrato):
     story.append(Spacer(1, 0.2 * inch))
 
 def criar_tabela_pdf(story, titulo, dados_header, dados_linhas, colWidths):
-    """Cria tabela formatada no PDF com título azul e header cinza claro (#d9d9d9)"""
+    """Cria tabela formatada no PDF com título azul e header cinza claro"""
     LARGURA_PADRAO = 6.7 * inch
     table_data = [dados_header] + dados_linhas
     tbl = Table(table_data, colWidths=colWidths, repeatRows=1)
@@ -811,7 +799,7 @@ def criar_tabela_pdf(story, titulo, dados_header, dados_linhas, colWidths):
 def gerar_pdf_relatorio_extrato(
     df_info, df_objeto, df_valores, df_fiscalizacao, df_garantia, df_evolucao, num_contrato, df_comprasnet
 ):
-    """Gera PDF do relatório em modo retrato - EVOLUÇÃO COLADA ABAIXO DA GARANTIA"""
+    """Gera PDF do relatório em modo retrato"""
     buffer = BytesIO()
     pagesize = A4
     doc = SimpleDocTemplate(
@@ -849,44 +837,23 @@ def gerar_pdf_relatorio_extrato(
         col_widths = [2.233 * inch] * 3
         criar_tabela_pdf(story, "VALORES DO CONTRATO", header, linhas, col_widths)
 
-    # OBJETO E COMPRASNET COM HEADERS
+    # OBJETO E COMPRASNET
     if not df_objeto.empty:
-        header_objeto = [
-            wrap_header("Objeto"),
-            wrap_header("Comprasnet")
-        ]
-        
+        header_objeto = [wrap_header("Objeto"), wrap_header("Comprasnet")]
         objeto_text = df_objeto["Objeto"].iloc[0] if not df_objeto.empty else ""
         comprasnet_url = df_comprasnet["Comprasnet"].iloc[0] if not df_comprasnet.empty else ""
         
         linhas_obj = [[
             wrap_data(objeto_text, TA_LEFT),
             Paragraph(
-                f"<a href='{comprasnet_url}'><b>{comprasnet_url}</b></a>" if comprasnet_url else "",
-                ParagraphStyle(
-                    "link_pdf",
-                    fontSize=7,
-                    alignment=TA_CENTER,
-                    textColor=colors.blue,
-                    leading=9,
-                )
+                f"<a href='{comprasnet_url}'>{comprasnet_url}</a>" if comprasnet_url else "",
+                ParagraphStyle("link_pdf", fontSize=7, alignment=TA_CENTER, textColor=colors.blue, leading=9)
             ) if comprasnet_url else wrap_data("", TA_CENTER)
         ]]
         
         col_widths_obj = [4.7 * inch, 2.0 * inch]
-        
-        # Título
         titulo_table = Table(
-            [[Paragraph(
-                "<b>OBJETO</b>",
-                ParagraphStyle(
-                    "titulo_secao",
-                    alignment=TA_CENTER,
-                    fontSize=9,
-                    textColor=colors.white,
-                    leading=10,
-                ),
-            )]],
+            [[Paragraph("<b>OBJETO</b>", ParagraphStyle("titulo_secao", alignment=TA_CENTER, fontSize=9, textColor=colors.white, leading=10))]],
             colWidths=[6.7 * inch],
         )
         titulo_table.setStyle(TableStyle([
@@ -899,7 +866,6 @@ def gerar_pdf_relatorio_extrato(
         ]))
         story.append(titulo_table)
         
-        # Tabela com dados
         tbl_obj = Table([header_objeto] + linhas_obj, colWidths=col_widths_obj, repeatRows=1)
         tbl_obj.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9d9d9")),
@@ -917,15 +883,44 @@ def gerar_pdf_relatorio_extrato(
         ]))
         story.append(tbl_obj)
 
-    # FISCALIZAÇÃO
+    # FISCALIZAÇÃO - SEM LINHAS BRANCAS
     if not df_fiscalizacao.empty:
         header = [wrap_header(col) for col in df_fiscalizacao.columns]
         linhas = []
         for _, row in df_fiscalizacao.iterrows():
-            linha = [wrap_data(row[col]) for col in df_fiscalizacao.columns]
+            linha = [wrap_data(row[col], TA_LEFT) for col in df_fiscalizacao.columns]
             linhas.append(linha)
-        col_widths = [1.675 * inch] * 4
-        criar_tabela_pdf(story, "EQUIPE DE FISCALIZAÇÃO DO CONTRATO", header, linhas, col_widths)
+        col_widths = [1.85 * inch, 1.85 * inch, 1.5 * inch, 1.5 * inch]
+        
+        titulo_table = Table(
+            [[Paragraph("<b>EQUIPE DE FISCALIZAÇÃO DO CONTRATO</b>", ParagraphStyle("titulo_secao", alignment=TA_CENTER, fontSize=9, textColor=colors.white, leading=10))]],
+            colWidths=[6.7 * inch],
+        )
+        titulo_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, 0), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+        ]))
+        story.append(titulo_table)
+        
+        tbl_fisc = Table([header] + linhas, colWidths=col_widths, repeatRows=1)
+        tbl_fisc.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9d9d9")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
+        ]))
+        story.append(tbl_fisc)
 
     # GARANTIA
     if not df_garantia.empty:
@@ -941,18 +936,32 @@ def gerar_pdf_relatorio_extrato(
         col_widths = [0.744 * inch] * 9
         criar_tabela_pdf(story, "GARANTIA DE EXECUÇÃO CONTRATUAL", header, linhas, col_widths)
 
-    # EVOLUÇÃO
+    # EVOLUÇÃO - COM COLUNA ALTERAÇÃO E TIPO
     if not df_evolucao.empty:
         df_evolucao_fmt = df_evolucao.copy()
         for col in ["Valor", "Valor Atualizado"]:
             if col in df_evolucao_fmt.columns:
                 df_evolucao_fmt[col] = df_evolucao_fmt[col].apply(formatar_moeda)
-        header = [wrap_header(col) for col in df_evolucao_fmt.columns]
+        
+        # Incluir as colunas Alteração e Tipo se existirem
+        cols_to_display = []
+        if "Alteração" in df_evolucao_fmt.columns and "Tipo" in df_evolucao_fmt.columns:
+            cols_to_display = ["Alteração", "Tipo", "Vigência", "Valor", "Valor Atualizado"]
+        else:
+            cols_to_display = ["Tipo", "Vigência", "Valor", "Valor Atualizado"]
+        
+        header = [wrap_header(col) for col in cols_to_display]
         linhas = []
         for _, row in df_evolucao_fmt.iterrows():
-            linha = [wrap_data(row[col]) for col in df_evolucao_fmt.columns]
+            linha = [wrap_data(row[col]) for col in cols_to_display]
             linhas.append(linha)
-        col_widths = [1.675 * inch] * 4
+        
+        # Ajustar larguras das colunas
+        if "Alteração" in df_evolucao_fmt.columns and "Tipo" in df_evolucao_fmt.columns:
+            col_widths = [1.0 * inch, 1.5 * inch, 1.0 * inch, 1.1 * inch, 1.1 * inch]
+        else:
+            col_widths = [1.5 * inch, 1.0 * inch, 1.1 * inch, 1.1 * inch]
+        
         criar_tabela_pdf(story, "EVOLUÇÃO DO CONTRATO", header, linhas, col_widths)
 
     doc.build(story)
@@ -992,7 +1001,7 @@ def atualizar_tabelas_extrato_cb(contrato):
     df_valores = dff_sorted[cols_contrato_valores].head(1).copy()
     for col in ["Valor original", "Acrésc/Supressões", "Valor atualizado"]:
         if col in df_valores.columns:
-            df_valores[col] = df_valores[col].apply(formatar_moeda)
+            df_valores[col] = df_valores[col].apply(lambda x: formatar_moeda(x))
     
     df_objeto = dff_sorted[["Objeto"]].head(1).copy()
     
@@ -1002,22 +1011,98 @@ def atualizar_tabelas_extrato_cb(contrato):
         lambda x: f"[{x}]({x})" if isinstance(x, str) and x.strip() else ""
     )
     
-    df_fisc = gerar_grupo_fiscalizacao(dff_sorted, 0)
+    # FISCALIZAÇÃO: TODAS AS 10 DUPLAS - FILTRAR LINHAS BRANCAS
+    lista_fisc = []
+    for i in range(10):
+        df_fisc_i = gerar_grupo_fiscalizacao(dff_sorted, i)
+        lista_fisc.append(df_fisc_i)
+    df_fisc = pd.concat(lista_fisc, ignore_index=True)
+    mask = (df_fisc["Fiscalização"].astype(str).str.strip() != "") | (df_fisc["Servidor"].astype(str).str.strip() != "") | (df_fisc["Fiscalização (subst.)"].astype(str).str.strip() != "") | (df_fisc["Servidor (subst.)"].astype(str).str.strip() != "")
+    df_fisc = df_fisc[mask].reset_index(drop=True)
     
     df_garan = dff_sorted[cols_garantia].head(1).copy()
     for col in ["Base de cálculo", "Cobertura", "Valor contratado"]:
         if col in df_garan.columns:
-            df_garan[col] = df_garan[col].apply(formatar_moeda)
+            df_garan[col] = df_garan[col].apply(lambda x: formatar_moeda(x))
     
-    # Evolução
+    # EVOLUÇÃO: SEPARAR EM DUAS COLUNAS (ALTERAÇÃO E TIPO)
     lista_evol = []
-    for i in range(1, 13):
-        df_alt = gerar_grupo_alteracao(dff_sorted, i)
-        lista_evol.append(df_alt)
-    df_evol_all = pd.concat(lista_evol, ignore_index=True)
-    df_evol_all = df_evol_all[df_evol_all["Tipo"].astype(str).str.strip().ne("")]
-    df_evol_all["Valor_fmt"] = df_evol_all["Valor"].apply(formatar_moeda)
-    df_evol_all["Valor Atualizado_fmt"] = df_evol_all["Valor Atualizado"].apply(formatar_moeda)
+    
+    # DEBUG: Verificar quais colunas realmente existem
+    print("DEBUG - Colunas disponíveis no DataFrame:")
+    colunas_alteracao = [c for c in dff_sorted.columns if "Alteração" in c or "Tipo" in c or "Valor" in c or "Vigência" in c]
+    for col in sorted(colunas_alteracao):
+        valor = dff_sorted[col].iloc[0] if col in dff_sorted.columns else "NÃO EXISTE"
+        print(f"{col}: {valor}")
+
+    # DEBUG específico para as primeiras alterações
+    print("\nDEBUG - Valores específicos:")
+    for i in range(1, 4):
+        print(f"{i}ª Alteração: {dff_sorted[f'{i}ª Alteração'].iloc[0] if f'{i}ª Alteração' in dff_sorted.columns else 'NÃO EXISTE'}")
+        print(f"Tipo.{i}: {dff_sorted[f'Tipo.{i}'].iloc[0] if f'Tipo.{i}' in dff_sorted.columns else 'NÃO EXISTE'}")
+        print(f"Valor.{i}: {dff_sorted[f'Valor.{i}'].iloc[0] if f'Valor.{i}' in dff_sorted.columns else 'NÃO EXISTE'}")
+        print(f"Valor Atualizado.{i}: {dff_sorted[f'Valor Atualizado.{i}'].iloc[0] if f'Valor Atualizado.{i}' in dff_sorted.columns else 'NÃO EXISTE'}")
+        print("---")
+    
+    # Mapeamento CORRETO baseado nos dados reais
+    # Ajuste este mapeamento conforme os resultados do DEBUG acima
+    alteracoes = [
+        # Primeira linha: 003/2023 | Apostila | | R$ 28.769,68 | R$ 662.226,76
+        {"nome": "1ª Alteração", "alt_col": "1ª Alteração", "tipo_col": "Tipo", "vig_col": "Vigência", "valor_col": "Valor", "valor_at_col": "Valor Atualizado"},
+        # Segunda linha: 008/2023 | TA - Supressão | | R$ 4.659,81 | R$ 641.298,26
+        {"nome": "2ª Alteração", "alt_col": "2ª Alteração", "tipo_col": "Tipo.1", "vig_col": "Vigência.1", "valor_col": "Valor.1", "valor_at_col": "Valor Atualizado.1"},
+        # Terceira linha: 008/2023 | Apostila | | R$ 637.617,12 | R$ 645.958,07
+        {"nome": "3ª Alteração", "alt_col": "3ª Alteração", "tipo_col": "Tipo.2", "vig_col": "Vigência.2", "valor_col": "Valor.2", "valor_at_col": "Valor Atualizado.2"},
+        {"nome": "4ª Alteração", "alt_col": "4ª Alteração", "tipo_col": "Tipo.3", "vig_col": "Vigência.3", "valor_col": "Valor.3", "valor_at_col": "Valor Atualizado.3"},
+        {"nome": "5ª Alteração", "alt_col": "5ª Alteração", "tipo_col": "Tipo.4", "vig_col": "Vigência.4", "valor_col": "Valor.4", "valor_at_col": "Valor Atualizado.4"},
+        {"nome": "6ª Alteração", "alt_col": "6ª Alteração", "tipo_col": "Tipo.5", "vig_col": "Vigência.5", "valor_col": "Valor.5", "valor_at_col": "Valor Atualizado.5"},
+        {"nome": "7ª Alteração", "alt_col": "7ª Alteração", "tipo_col": "Tipo.6", "vig_col": "Vigência.6", "valor_col": "Valor.6", "valor_at_col": "Valor Atualizado.6"},
+        {"nome": "8ª Alteração", "alt_col": "8ª Alteração", "tipo_col": "Tipo.7", "vig_col": "Vigência.7", "valor_col": "Valor.7", "valor_at_col": "Valor Atualizado.7"},
+        {"nome": "9ª Alteração", "alt_col": "9ª Alteração", "tipo_col": "Tipo.8", "vig_col": "Vigência.8", "valor_col": "Valor.8", "valor_at_col": "Valor Atualizado.8"},
+        {"nome": "10ª Alteração", "alt_col": "10ª Alteração", "tipo_col": "Tipo.9", "vig_col": "Vigência.9", "valor_col": "Valor.9", "valor_at_col": "Valor Atualizado.9"},
+        {"nome": "11ª Alteração", "alt_col": "11ª Alteração", "tipo_col": "Tipo.10", "vig_col": "Vigência.10", "valor_col": "Valor.10", "valor_at_col": "Valor Atualizado.10"},
+        {"nome": "12ª Alteração", "alt_col": "12ª Alteração", "tipo_col": "Tipo.11", "vig_col": "Vigência.11", "valor_col": "Valor.11", "valor_at_col": "Valor Atualizado.11"},
+    ]
+    
+    for alt in alteracoes:
+        # Para todas as alterações
+        alteracao_valor = dff_sorted[alt["alt_col"]].iloc[0] if alt["alt_col"] in dff_sorted.columns and not pd.isna(dff_sorted[alt["alt_col"]].iloc[0]) else ""
+        tipo_valor = dff_sorted[alt["tipo_col"]].iloc[0] if alt["tipo_col"] in dff_sorted.columns else ""
+        vig_valor = dff_sorted[alt["vig_col"]].iloc[0] if alt["vig_col"] in dff_sorted.columns else ""
+        valor_valor = dff_sorted[alt["valor_col"]].iloc[0] if alt["valor_col"] in dff_sorted.columns else ""
+        valor_at_valor = dff_sorted[alt["valor_at_col"]].iloc[0] if alt["valor_at_col"] in dff_sorted.columns else ""
+        
+        # Verificar se há dados para mostrar (mais rigoroso)
+        has_data = any([
+            pd.notna(alteracao_valor) and str(alteracao_valor).strip() != "",
+            pd.notna(tipo_valor) and str(tipo_valor).strip() != "",
+            pd.notna(vig_valor) and str(vig_valor).strip() != "",
+            pd.notna(valor_valor) and str(valor_valor).strip() != "",
+            pd.notna(valor_at_valor) and str(valor_at_valor).strip() != ""
+        ])
+        
+        if has_data:
+            df_alt = pd.DataFrame({
+                "Alteração": [alteracao_valor],
+                "Tipo": [tipo_valor],
+                "Vigência": [vig_valor],
+                "Valor": [valor_valor],
+                "Valor Atualizado": [valor_at_valor]
+            })
+            lista_evol.append(df_alt)
+    
+    # Concatenar apenas se houver dados
+    if lista_evol:
+        df_evol_all = pd.concat(lista_evol, ignore_index=True)
+        
+        # Formatar valores monetários para exibição
+        df_evol_all["Valor_fmt"] = df_evol_all["Valor"].apply(lambda x: formatar_moeda(x))
+        df_evol_all["Valor Atualizado_fmt"] = df_evol_all["Valor Atualizado"].apply(lambda x: formatar_moeda(x))
+        
+        # Preparar DataFrame final para exibição
+        df_evol_display = df_evol_all[["Alteração", "Tipo", "Vigência", "Valor_fmt", "Valor Atualizado_fmt"]].copy()
+    else:
+        df_evol_display = pd.DataFrame()
 
     return (
         df_info.to_dict("records"),
@@ -1025,9 +1110,9 @@ def atualizar_tabelas_extrato_cb(contrato):
         df_valores.to_dict("records"),
         df_fisc.to_dict("records"),
         df_garan.to_dict("records"),
-        df_evol_all[["Tipo", "Vigência", "Valor_fmt", "Valor Atualizado_fmt"]].to_dict("records"),
+        df_evol_display.to_dict("records"),
         df_comp[["Comprasnet_link"]].to_dict("records"),
-        dff_sorted["Contrato"].iloc[0],
+        str(dff_sorted["Contrato"].iloc[0]),
     )
 
 @callback(
@@ -1068,15 +1153,68 @@ def download_relatorio_pdf(n_clicks, filtro_contrato):
     df_objeto = dff_sorted[["Objeto"]].head(1)
     df_comprasnet = dff_sorted[["Comprasnet"]].head(1)
     df_valores = dff_sorted[cols_contrato_valores].head(1)
-    df_fisc = gerar_grupo_fiscalizacao(dff_sorted, 0)
+    
+    # Fiscalização: todas as 10 duplas - SEM LINHAS BRANCAS
+    lista_fisc = []
+    for i in range(10):
+        df_fisc_i = gerar_grupo_fiscalizacao(dff_sorted, i)
+        lista_fisc.append(df_fisc_i)
+    df_fisc = pd.concat(lista_fisc, ignore_index=True)
+    mask = (df_fisc["Fiscalização"].astype(str).str.strip() != "") | (df_fisc["Servidor"].astype(str).str.strip() != "") | (df_fisc["Fiscalização (subst.)"].astype(str).str.strip() != "") | (df_fisc["Servidor (subst.)"].astype(str).str.strip() != "")
+    df_fisc = df_fisc[mask].reset_index(drop=True)
+    
     df_garan = dff_sorted[cols_garantia].head(1)
     
+    # Evolução: SEPARAR EM DUAS COLUNAS (ALTERAÇÃO E TIPO)
     lista_evol = []
-    for i in range(1, 13):
-        df_alt = gerar_grupo_alteracao(dff_sorted, i)
-        lista_evol.append(df_alt)
-    df_evol_all = pd.concat(lista_evol, ignore_index=True)
-    df_evol_all = df_evol_all[df_evol_all["Tipo"].astype(str).str.strip().ne("")]
+    
+    # Mapeamento CORRETO baseado nos dados reais (mesmo que acima)
+    alteracoes = [
+        {"nome": "1ª Alteração", "alt_col": "1ª Alteração", "tipo_col": "Tipo", "vig_col": "Vigência", "valor_col": "Valor", "valor_at_col": "Valor Atualizado"},
+        {"nome": "2ª Alteração", "alt_col": "2ª Alteração", "tipo_col": "Tipo.1", "vig_col": "Vigência.1", "valor_col": "Valor.1", "valor_at_col": "Valor Atualizado.1"},
+        {"nome": "3ª Alteração", "alt_col": "3ª Alteração", "tipo_col": "Tipo.2", "vig_col": "Vigência.2", "valor_col": "Valor.2", "valor_at_col": "Valor Atualizado.2"},
+        {"nome": "4ª Alteração", "alt_col": "4ª Alteração", "tipo_col": "Tipo.3", "vig_col": "Vigência.3", "valor_col": "Valor.3", "valor_at_col": "Valor Atualizado.3"},
+        {"nome": "5ª Alteração", "alt_col": "5ª Alteração", "tipo_col": "Tipo.4", "vig_col": "Vigência.4", "valor_col": "Valor.4", "valor_at_col": "Valor Atualizado.4"},
+        {"nome": "6ª Alteração", "alt_col": "6ª Alteração", "tipo_col": "Tipo.5", "vig_col": "Vigência.5", "valor_col": "Valor.5", "valor_at_col": "Valor Atualizado.5"},
+        {"nome": "7ª Alteração", "alt_col": "7ª Alteração", "tipo_col": "Tipo.6", "vig_col": "Vigência.6", "valor_col": "Valor.6", "valor_at_col": "Valor Atualizado.6"},
+        {"nome": "8ª Alteração", "alt_col": "8ª Alteração", "tipo_col": "Tipo.7", "vig_col": "Vigência.7", "valor_col": "Valor.7", "valor_at_col": "Valor Atualizado.7"},
+        {"nome": "9ª Alteração", "alt_col": "9ª Alteração", "tipo_col": "Tipo.8", "vig_col": "Vigência.8", "valor_col": "Valor.8", "valor_at_col": "Valor Atualizado.8"},
+        {"nome": "10ª Alteração", "alt_col": "10ª Alteração", "tipo_col": "Tipo.9", "vig_col": "Vigência.9", "valor_col": "Valor.9", "valor_at_col": "Valor Atualizado.9"},
+        {"nome": "11ª Alteração", "alt_col": "11ª Alteração", "tipo_col": "Tipo.10", "vig_col": "Vigência.10", "valor_col": "Valor.10", "valor_at_col": "Valor Atualizado.10"},
+        {"nome": "12ª Alteração", "alt_col": "12ª Alteração", "tipo_col": "Tipo.11", "vig_col": "Vigência.11", "valor_col": "Valor.11", "valor_at_col": "Valor Atualizado.11"},
+    ]
+    
+    for alt in alteracoes:
+        # Para todas as alterações
+        alteracao_valor = dff_sorted[alt["alt_col"]].iloc[0] if alt["alt_col"] in dff_sorted.columns and not pd.isna(dff_sorted[alt["alt_col"]].iloc[0]) else ""
+        tipo_valor = dff_sorted[alt["tipo_col"]].iloc[0] if alt["tipo_col"] in dff_sorted.columns else ""
+        vig_valor = dff_sorted[alt["vig_col"]].iloc[0] if alt["vig_col"] in dff_sorted.columns else ""
+        valor_valor = dff_sorted[alt["valor_col"]].iloc[0] if alt["valor_col"] in dff_sorted.columns else ""
+        valor_at_valor = dff_sorted[alt["valor_at_col"]].iloc[0] if alt["valor_at_col"] in dff_sorted.columns else ""
+        
+        # Verificar se há dados para mostrar (mais rigoroso)
+        has_data = any([
+            pd.notna(alteracao_valor) and str(alteracao_valor).strip() != "",
+            pd.notna(tipo_valor) and str(tipo_valor).strip() != "",
+            pd.notna(vig_valor) and str(vig_valor).strip() != "",
+            pd.notna(valor_valor) and str(valor_valor).strip() != "",
+            pd.notna(valor_at_valor) and str(valor_at_valor).strip() != ""
+        ])
+        
+        if has_data:
+            df_alt = pd.DataFrame({
+                "Alteração": [alteracao_valor],
+                "Tipo": [tipo_valor],
+                "Vigência": [vig_valor],
+                "Valor": [valor_valor],
+                "Valor Atualizado": [valor_at_valor]
+            })
+            lista_evol.append(df_alt)
+    
+    if lista_evol:
+        df_evol_all = pd.concat(lista_evol, ignore_index=True)
+    else:
+        df_evol_all = pd.DataFrame()
 
     pdf_buffer = gerar_pdf_relatorio_extrato(
         df_info, df_objeto, df_valores, df_fisc, df_garan, df_evol_all, num_contrato, df_comprasnet
