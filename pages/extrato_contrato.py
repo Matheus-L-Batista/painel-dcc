@@ -68,8 +68,47 @@ def formatar_moeda(v):
         return ""
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def formatar_fiscalizacao_para_texto(fiscalizacao, servidor):
+    """Formata a fiscalização para texto com quebras de linha"""
+    if not fiscalizacao and not servidor:
+        return ""
+    
+    fiscalizacao = str(fiscalizacao).strip() if fiscalizacao else ""
+    servidor = str(servidor).strip() if servidor else ""
+    
+    # Remover "nan"
+    fiscalizacao = fiscalizacao.replace("nan", "").strip()
+    servidor = servidor.replace("nan", "").strip()
+    
+    if not fiscalizacao and not servidor:
+        return ""
+    
+    # Formatar texto com quebras de linha
+    texto_formatado = ""
+    if fiscalizacao:
+        texto_formatado += fiscalizacao
+    if servidor:
+        # Adicionar quebra de linha entre título e nome
+        if texto_formatado:
+            texto_formatado += "\n"
+        # Adicionar quebras automáticas para nomes longos (aproximadamente 20 caracteres por linha)
+        servidor_formatado = servidor
+        # Inserir quebras de linha manualmente para nomes longos
+        palavras = servidor_formatado.split()
+        linha_atual = ""
+        for palavra in palavras:
+            if len(linha_atual) + len(palavra) + 1 <= 20:  # +1 para o espaço
+                linha_atual += " " + palavra if linha_atual else palavra
+            else:
+                texto_formatado += linha_atual + "\n"
+                linha_atual = palavra
+        if linha_atual:
+            texto_formatado += linha_atual
+    
+    return texto_formatado
+
 def formatar_fiscalizacao_para_html(fiscalizacao, servidor):
-    """Formata a fiscalização para HTML com negrito e quebra de linha"""
+    """Formata a fiscalização para HTML com negrito e quebra de linha (para PDF)"""
     if not fiscalizacao and not servidor:
         return ""
     
@@ -285,19 +324,19 @@ layout = html.Div(
                             ],
                         ),
                         
-                        # Filtro por Objeto
+                        # Filtro por Contratada (SUBSTITUINDO OBJETO)
                         html.Div(
                             style={"minWidth": "300px", "flex": "2 1 300px"},
                             children=[
-                                html.Label("Objeto", style={"fontWeight": "bold", "marginBottom": "5px"}),
+                                html.Label("Contratada", style={"fontWeight": "bold", "marginBottom": "5px"}),
                                 dcc.Dropdown(
-                                    id="filtro_objeto_extrato",
+                                    id="filtro_contratada_extrato",
                                     options=[
-                                        {"label": str(objeto)[:100] + "..." if len(str(objeto)) > 100 else str(objeto), 
-                                         "value": str(objeto)}
-                                        for objeto in sorted(df_extrato_base["Objeto"].dropna().unique())
+                                        {"label": str(contratada)[:100] + "..." if len(str(contratada)) > 100 else str(contratada), 
+                                         "value": str(contratada)}
+                                        for contratada in sorted(df_extrato_base["Contratada"].dropna().unique())
                                     ],
-                                    placeholder="Busque pelo objeto do contrato...",
+                                    placeholder="Busque pela empresa contratada...",
                                     clearable=True,
                                     style={"width": "100%"},
                                 ),
@@ -472,7 +511,7 @@ layout = html.Div(
                     ],
                 ),
 
-                # OBJETO
+                # OBJETO (COM HEADER AZUL E SEM TÍTULO EXTERNO)
                 html.Div(
                     style={
                         "width": "100%",
@@ -480,26 +519,15 @@ layout = html.Div(
                         "zIndex": 1,
                     },
                     children=[
-                        html.H4(
-                            "OBJETO",
-                            style={
-                                "textAlign": "center",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "padding": "8px 0",
-                                "margin": "0",
-                                "borderRadius": "4px 4px 0 0",
-                            },
-                        ),
                         dash_table.DataTable(
                             id="tabela_extrato_objeto",
-                            columns=[{"name": "Objeto", "id": "Objeto"}],
+                            columns=[{"name": "OBJETO", "id": "Objeto"}],
                             data=[],
                             style_table={
                                 "overflowX": "auto",
                                 "width": "100%",
                                 "border": "1px solid #ddd",
-                                "borderRadius": "0 0 4px 4px",
+                                "borderRadius": "4px",
                             },
                             style_cell={
                                 "textAlign": "left",
@@ -509,15 +537,16 @@ layout = html.Div(
                             },
                             style_header={
                                 "fontWeight": "bold",
-                                "backgroundColor": "#f0f0f0",
-                                "color": "black",
+                                "backgroundColor": "#0b2b57",  # AZUL
+                                "color": "white",
                                 "textAlign": "center",
+                                "fontSize": "13px",
                             },
                         ),
                     ],
                 ),
 
-                # COMPRASNET
+                # COMPRASNET (COM HEADER AZUL E SEM TÍTULO EXTERNO)
                 html.Div(
                     style={
                         "width": "100%",
@@ -525,22 +554,10 @@ layout = html.Div(
                         "zIndex": 1,
                     },
                     children=[
-                        html.H4(
-                            "DOCUMENTOS DA CONTRATAÇÃO DISPONÍVEIS PARA CONSULTA NO PORTAL COMPRASNET",
-                            style={
-                                "textAlign": "center",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "padding": "8px 0",
-                                "margin": "0",
-                                "borderRadius": "4px 4px 0 0",
-                                "fontSize": "14px",
-                            },
-                        ),
                         dash_table.DataTable(
                             id="tabela_extrato_comprasnet",
                             columns=[{
-                                "name": "",
+                                "name": "DOCUMENTOS DA CONTRATAÇÃO DISPONÍVEIS PARA CONSULTA NO PORTAL COMPRASNET",
                                 "id": "Comprasnet_link",
                                 "presentation": "markdown",
                             }],
@@ -549,7 +566,7 @@ layout = html.Div(
                                 "overflowX": "auto",
                                 "width": "100%",
                                 "border": "1px solid #ddd",
-                                "borderRadius": "0 0 4px 4px",
+                                "borderRadius": "4px",
                             },
                             style_cell={
                                 "textAlign": "center",
@@ -561,9 +578,10 @@ layout = html.Div(
                             },
                             style_header={
                                 "fontWeight": "bold",
-                                "backgroundColor": "#f0f0f0",
-                                "color": "black",
+                                "backgroundColor": "#0b2b57",  # AZUL
+                                "color": "white",
                                 "textAlign": "center",
+                                "fontSize": "13px",
                             },
                         ),
                     ],
@@ -602,7 +620,7 @@ layout = html.Div(
                                 "textAlign": "center",
                                 "padding": "10px 4px",
                                 "fontSize": "12px",
-                                "whiteSpace": "normal",
+                                "whiteSpace": "pre-line",  # IMPORTANTE: permite quebras de linha
                                 "height": "70px",
                                 "verticalAlign": "middle",
                             },
@@ -611,7 +629,9 @@ layout = html.Div(
                                 "backgroundColor": "#0b2b57",
                                 "color": "white",
                                 "textAlign": "center",
-                                "padding": "10px",
+                                "padding": "4px",  # REDUZIDO O PADDING
+                                "fontSize": "11px",  # FONTE MENOR
+                                "height": "30px",  # ALTURA REDUZIDA
                             },
                             style_data_conditional=[
                                 {
@@ -623,10 +643,6 @@ layout = html.Div(
                                     "backgroundColor": "#ffffff",
                                 },
                             ],
-                            css=[{
-                                'selector': '.dash-cell div',
-                                'rule': 'text-align: center; line-height: 1.2;'
-                            }]
                         ),
                     ],
                 ),
@@ -1315,11 +1331,11 @@ def gerar_pdf_relatorio_extrato(
 # ===== CALLBACKS =====
 @callback(
     Output("filtro_contrato_extrato", "options"),
-    Output("filtro_objeto_extrato", "options"),
+    Output("filtro_contratada_extrato", "options"),
     Input("filtro_contrato_extrato", "value"),
-    Input("filtro_objeto_extrato", "value"),
+    Input("filtro_contratada_extrato", "value"),
 )
-def atualizar_filtros_cascata(contrato_selecionado, objeto_selecionado):
+def atualizar_filtros_cascata(contrato_selecionado, contratada_selecionada):
     """Atualiza os filtros em cascata"""
     df_filtrado = df_extrato_base.copy()
     
@@ -1327,8 +1343,8 @@ def atualizar_filtros_cascata(contrato_selecionado, objeto_selecionado):
     if contrato_selecionado:
         df_filtrado = df_filtrado[df_filtrado["Contrato"] == contrato_selecionado]
     
-    if objeto_selecionado:
-        df_filtrado = df_filtrado[df_filtrado["Objeto"] == objeto_selecionado]
+    if contratada_selecionada:
+        df_filtrado = df_filtrado[df_filtrado["Contratada"] == contratada_selecionada]
     
     # Gerar opções para Contrato
     opcoes_contrato = [
@@ -1336,29 +1352,29 @@ def atualizar_filtros_cascata(contrato_selecionado, objeto_selecionado):
         for contrato in sorted(df_filtrado["Contrato"].dropna().unique())
     ]
     
-    # Gerar opções para Objeto (com truncamento para nomes muito longos)
-    opcoes_objeto = []
-    for objeto in sorted(df_filtrado["Objeto"].dropna().unique()):
-        objeto_str = str(objeto)
-        label = objeto_str[:100] + "..." if len(objeto_str) > 100 else objeto_str
-        opcoes_objeto.append({"label": label, "value": objeto_str})
+    # Gerar opções para Contratada (com truncamento para nomes muito longos)
+    opcoes_contratada = []
+    for contratada in sorted(df_filtrado["Contratada"].dropna().unique()):
+        contratada_str = str(contratada)
+        label = contratada_str[:100] + "..." if len(contratada_str) > 100 else contratada_str
+        opcoes_contratada.append({"label": label, "value": contratada_str})
     
-    return opcoes_contrato, opcoes_objeto
+    return opcoes_contrato, opcoes_contratada
 
 @callback(
     Output("info_filtros", "children"),
     Input("filtro_contrato_extrato", "value"),
-    Input("filtro_objeto_extrato", "value"),
+    Input("filtro_contratada_extrato", "value"),
 )
-def atualizar_info_filtros(contrato, objeto):
+def atualizar_info_filtros(contrato, contratada):
     """Atualiza a informação sobre filtros aplicados"""
     filtros = []
     if contrato:
         filtros.append(f"Contrato: {contrato}")
-    if objeto:
-        # Truncar objeto muito longo
-        objeto_display = objeto[:50] + "..." if len(objeto) > 50 else objeto
-        filtros.append(f"Objeto: {objeto_display}")
+    if contratada:
+        # Truncar contratada muito longo
+        contratada_display = contratada[:50] + "..." if len(contratada) > 50 else contratada
+        filtros.append(f"Contratada: {contratada_display}")
     
     if filtros:
         return f"Filtros aplicados: {' | '.join(filtros)}"
@@ -1376,12 +1392,12 @@ def atualizar_info_filtros(contrato, objeto):
     Output("tabela_extrato_comprasnet", "data"),
     Output("valor_numero_contrato", "children"),
     Input("filtro_contrato_extrato", "value"),
-    Input("filtro_objeto_extrato", "value"),
+    Input("filtro_contratada_extrato", "value"),
 )
-def atualizar_tabelas_extrato_cb(contrato, objeto):
+def atualizar_tabelas_extrato_cb(contrato, contratada):
     """Callback principal: atualiza todas as tabelas ao filtrar"""
     # Se não houver nenhum filtro selecionado, limpar tudo
-    if not contrato and not objeto:
+    if not contrato and not contratada:
         return [], [], [], [], [], [], [], "", [], ""
     
     # Aplicar filtros
@@ -1390,8 +1406,8 @@ def atualizar_tabelas_extrato_cb(contrato, objeto):
     if contrato:
         dff = dff[dff["Contrato"] == contrato]
     
-    if objeto:
-        dff = dff[dff["Objeto"] == objeto]
+    if contratada:
+        dff = dff[dff["Contratada"] == contratada]
     
     if dff.empty:
         return [], [], [], [], [], [], [], "", [], ""
@@ -1441,24 +1457,26 @@ def atualizar_tabelas_extrato_cb(contrato, objeto):
             for col_idx in range(len(equipes_dados)):
                 col_id = f"Equipe_{col_idx}"
                 if linha_idx == 0:  # Titular
-                    html_content = formatar_fiscalizacao_para_html(
+                    # Usar formatação de texto em vez de HTML
+                    texto_formatado = formatar_fiscalizacao_para_texto(
                         equipes_dados[col_idx]["fiscalizacao_titular"],
                         equipes_dados[col_idx]["servidor_titular"]
                     )
-                    linha_dict[col_id] = html_content
+                    linha_dict[col_id] = texto_formatado
                 else:  # Substituto
-                    html_content = formatar_fiscalizacao_para_html(
+                    texto_formatado = formatar_fiscalizacao_para_texto(
                         equipes_dados[col_idx]["fiscalizacao_substituto"],
                         equipes_dados[col_idx]["servidor_substituto"]
                     )
-                    linha_dict[col_id] = html_content
+                    linha_dict[col_id] = texto_formatado
             dados_finais.append(linha_dict)
         
-        # Criar colunas com nome vazio
+        # Criar colunas com nome vazio e header menor
         for col_idx in range(len(equipes_dados)):
             colunas_tabela.append({
                 "name": "",  # NOME VAZIO
                 "id": f"Equipe_{col_idx}",
+                "type": "text",
             })
         
         df_fisc = pd.DataFrame(dados_finais)
@@ -1539,27 +1557,27 @@ def atualizar_tabelas_extrato_cb(contrato, objeto):
 
 @callback(
     Output("filtro_contrato_extrato", "value", allow_duplicate=True),
-    Output("filtro_objeto_extrato", "value", allow_duplicate=True),
+    Output("filtro_contratada_extrato", "value", allow_duplicate=True),
     Input("btn_limpar_filtros_extrato", "n_clicks"),
     prevent_initial_call=True,
 )
 def limpar_filtros_extrato(n_clicks):
-    """Limpa os filtros de contrato e objeto"""
+    """Limpa os filtros de contrato e contratada"""
     return "", ""
 
 @callback(
     Output("download_relatorio_extrato", "data"),
     Input("btn_download_relatorio_extrato", "n_clicks"),
     State("filtro_contrato_extrato", "value"),
-    State("filtro_objeto_extrato", "value"),
+    State("filtro_contratada_extrato", "value"),
     prevent_initial_call=True,
 )
-def download_relatorio_pdf(n_clicks, filtro_contrato, filtro_objeto):
+def download_relatorio_pdf(n_clicks, filtro_contrato, filtro_contratada):
     """Gera e baixa o PDF do relatório"""
     from dash import dcc
     import dash
     
-    if not n_clicks or (not filtro_contrato and not filtro_objeto):
+    if not n_clicks or (not filtro_contrato and not filtro_contratada):
         return dash.no_update
     
     # Aplicar os mesmos filtros usados na visualização
@@ -1568,8 +1586,8 @@ def download_relatorio_pdf(n_clicks, filtro_contrato, filtro_objeto):
     if filtro_contrato:
         dff = dff[dff["Contrato"] == filtro_contrato]
     
-    if filtro_objeto:
-        dff = dff[dff["Objeto"] == filtro_objeto]
+    if filtro_contratada:
+        dff = dff[dff["Contratada"] == filtro_contratada]
     
     if dff.empty:
         return dash.no_update
