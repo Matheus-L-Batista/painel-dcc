@@ -11,16 +11,12 @@ app = Dash(
 server = app.server
 
 
-# LINKS NORMAIS (sem Processos de Compras e Status do Processo,
-# pois eles ficam dentro da caixinha "Processos")
+# LINKS NORMAIS (sem Contratos e Extrato do Contrato, pois ficam dentro da caixinha "Contratos")
 menu_links = [
-    {"label": "Contratos", "href": "/contratos"},
     {"label": "Fiscais", "href": "/fiscais"},
     {"label": "Plano de Contratação Anual", "href": "/pca"},
     {"label": "Controle de Atas", "href": "/atas"},
-    {"label": "Extrato do Contrato", "href": "/extrato-contrato"},
-   # {"label": "tabela", "href": "/consultartabelas"},
-
+    # {"label": "tabela", "href": "/consultartabelas"},
 ]
 
 
@@ -84,10 +80,61 @@ def atualizar_menu(pathname):
     itens = []
 
     # =========================
-    # 0) Caixa Processos
+    # 0) Caixa Contratos
+    # =========================
+    contratos_paths = [
+        "/contratos",
+        "/extrato-contrato",
+    ]
+    contratos_ativo = pathname in contratos_paths
+
+    ct_btn_classes = "contratos-toggle"
+    ct_content_classes = "contratos-content"
+    if contratos_ativo:
+        ct_btn_classes += " active"
+        ct_content_classes += " expanded"
+
+    contratos_box = html.Div(
+        className="contratos-container",
+        children=[
+            html.Div(
+                "Contratos",
+                id="btn-contratos",
+                className=ct_btn_classes,
+            ),
+            html.Div(
+                id="box-contratos",
+                className=ct_content_classes,
+                children=[
+                    dcc.Link(
+                        "Status do Contrato",
+                        href="/contratos",
+                        className=(
+                            "contratos-subbutton contratos-subbutton-active"
+                            if pathname == "/contratos"
+                            else "contratos-subbutton"
+                        ),
+                    ),
+                    dcc.Link(
+                        "Extrato do Contrato",
+                        href="/extrato-contrato",
+                        className=(
+                            "contratos-subbutton contratos-subbutton-active"
+                            if pathname == "/extrato-contrato"
+                            else "contratos-subbutton"
+                        ),
+                    ),
+                ],
+            ),
+        ],
+    )
+    itens.append(contratos_box)
+
+    # =========================
+    # 1) Caixa Processos
     # =========================
     processos_paths = [
-        "/processos-de-compras",   # ajuste se o path da página for diferente
+        "/processos-de-compras",
         "/statusdoprocesso",
     ]
     processos_ativo = pathname in processos_paths
@@ -135,7 +182,7 @@ def atualizar_menu(pathname):
     itens.append(processos_box)
 
     # =========================
-    # 1) Caixa Fracionamento
+    # 2) Caixa Fracionamento
     # =========================
     fracionamento_ativo = pathname in ["/fracionamento_pdm", "/fracionamento_catser"]
 
@@ -182,7 +229,7 @@ def atualizar_menu(pathname):
     itens.append(fracionamento_box)
 
     # =========================
-    # 2) Caixa Portarias
+    # 3) Caixa Portarias
     # =========================
     portarias_paths = [
         "/portarias_agentedecompras",
@@ -233,7 +280,7 @@ def atualizar_menu(pathname):
     itens.append(portarias_box)
 
     # =========================
-    # 3) Demais itens normais
+    # 4) Demais itens normais
     # =========================
     for m in menu_links:
         class_name = (
@@ -250,6 +297,21 @@ def atualizar_menu(pathname):
         )
 
     return itens
+
+
+# Abre/fecha Contratos
+@callback(
+    Output("btn-contratos", "className"),
+    Output("box-contratos", "className"),
+    Input("btn-contratos", "n_clicks"),
+    prevent_initial_call=True,
+)
+def toggle_contratos(n):
+    base_btn = "contratos-toggle"
+    base_box = "contratos-content"
+    if n and n % 2 == 1:
+        return base_btn + " active", base_box + " expanded"
+    return base_btn, base_box
 
 
 # Abre/fecha Processos
