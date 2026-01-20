@@ -68,6 +68,68 @@ def formatar_moeda(v):
         return ""
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def formatar_fiscalizacao_para_html(fiscalizacao, servidor):
+    """Formata a fiscalização para HTML com negrito e quebra de linha"""
+    if not fiscalizacao and not servidor:
+        return ""
+    
+    fiscalizacao = str(fiscalizacao).strip() if fiscalizacao else ""
+    servidor = str(servidor).strip() if servidor else ""
+    
+    # Remover "nan"
+    fiscalizacao = fiscalizacao.replace("nan", "").strip()
+    servidor = servidor.replace("nan", "").strip()
+    
+    if not fiscalizacao and not servidor:
+        return ""
+    
+    # Formatar como HTML com negrito e centralizado
+    html_content = f'<div style="text-align: center; line-height: 1.2;">'
+    if fiscalizacao:
+        html_content += f'<div style="font-weight: bold; font-size: 11px;">{fiscalizacao}</div>'
+    if servidor:
+        # Adicionar quebra de linha automática para nomes longos
+        servidor_formatado = servidor.replace(" ", "&#8203; ")
+        html_content += f'<div style="font-size: 10px;">{servidor_formatado}</div>'
+    html_content += '</div>'
+    
+    return html_content
+
+def formatar_fiscalizacao_para_pdf(fiscalizacao, servidor):
+    """Formata a fiscalização para PDF com negrito e quebra de linha"""
+    if not fiscalizacao and not servidor:
+        return ""
+    
+    fiscalizacao = str(fiscalizacao).strip() if fiscalizacao else ""
+    servidor = str(servidor).strip() if servidor else ""
+    
+    # Remover "nan"
+    fiscalizacao = fiscalizacao.replace("nan", "").strip()
+    servidor = servidor.replace("nan", "").strip()
+    
+    if not fiscalizacao and not servidor:
+        return ""
+    
+    # Criar parágrafo com estilo
+    from reportlab.platypus import Paragraph
+    from reportlab.lib.styles import ParagraphStyle
+    
+    texto = ""
+    if fiscalizacao:
+        texto += f"<b>{fiscalizacao}</b><br/>"
+    if servidor:
+        texto += servidor
+    
+    estilo = ParagraphStyle(
+        'fiscalizacao_pdf',
+        alignment=TA_CENTER,
+        fontSize=7,
+        leading=9,
+        spaceAfter=2,
+    )
+    
+    return Paragraph(texto, estilo)
+
 # ===== CARREGAMENTO E TRATAMENTO DE DADOS =====
 def carregar_dados_extrato():
     """Carrega dados do Google Sheets e realiza conversões de tipos"""
@@ -150,8 +212,8 @@ for c in cols_contrato_info + cols_contrato_valores + cols_garantia:
     if c not in df_extrato_base.columns:
         df_extrato_base[c] = None
 
-def gerar_grupo_fiscalizacao(df_local, indice):
-    """Gera dataframe de fiscalização para um índice específico (0-9 para 10 duplas)"""
+def gerar_grupo_fiscalizacao_otimizado(df_local, indice):
+    """Gera dados de fiscalização otimizados para um índice específico"""
     if indice == 0:
         col_fisc = "Fiscalização"
         col_serv = "Servidor"
@@ -168,15 +230,19 @@ def gerar_grupo_fiscalizacao(df_local, indice):
         if c not in df_local.columns:
             df_local[c] = None
     
-    tabela_sel = df_local[colunas_originais].copy()
-    return tabela_sel.rename(
-        columns={
-            col_fisc: "Fiscalização",
-            col_serv: "Servidor",
-            col_fisc_subst: "Fiscalização (subst.)",
-            col_serv_subst: "Servidor (subst.)",
-        }
-    )
+    # Extrair os dados
+    fisc_titular = df_local[col_fisc].iloc[0] if not df_local.empty else ""
+    serv_titular = df_local[col_serv].iloc[0] if not df_local.empty else ""
+    fisc_subst = df_local[col_fisc_subst].iloc[0] if not df_local.empty else ""
+    serv_subst = df_local[col_serv_subst].iloc[0] if not df_local.empty else ""
+    
+    # Retornar dicionário com dados separados
+    return {
+        "fiscalizacao_titular": fisc_titular,
+        "servidor_titular": serv_titular,
+        "fiscalizacao_substituto": fisc_subst,
+        "servidor_substituto": serv_subst
+    }
 
 # ===== LAYOUT DASH =====
 layout = html.Div(
@@ -422,7 +488,7 @@ layout = html.Div(
                                 dash_table.DataTable(
                                     id="tabela_extrato_comprasnet",
                                     columns=[{
-                                        "name": "Comprasnet",
+                                        "name": "",
                                         "id": "Comprasnet_link",
                                         "presentation": "markdown",
                                     }],
@@ -441,6 +507,8 @@ layout = html.Div(
                                         "padding": "6px",
                                         "fontSize": "12px",
                                         "whiteSpace": "normal",
+                                        "height": "50px",
+                                        "verticalAlign": "middle",
                                     },
                                     style_header={
                                         "fontWeight": "bold",
@@ -454,7 +522,7 @@ layout = html.Div(
                     ],
                 ),
 
-                # FISCALIZAÇÃO - APENAS COM DADOS (SEM LINHAS BRANCAS)
+                # FISCALIZAÇÃO - NOVO FORMATO OTIMIZADO (COLUNAS DINÂMICAS COM NOME VAZIO)
                 html.Div(
                     style={
                         "flex": "1 1 100%",
@@ -476,28 +544,24 @@ layout = html.Div(
                         ),
                         dash_table.DataTable(
                             id="tabela_extrato_fiscalizacao",
-                            columns=[
-                                {"name": "Fiscalização", "id": "Fiscalização"},
-                                {"name": "Servidor", "id": "Servidor"},
-                                {"name": "Fiscalização (subst.)", "id": "Fiscalização (subst.)"},
-                                {"name": "Servidor (subst.)", "id": "Servidor (subst.)"},
-                            ],
+                            columns=[],  # Serão preenchidas dinamicamente
                             data=[],
                             fixed_rows={"headers": True},
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
-                                "maxHeight": "400px",
+                                "maxHeight": "180px",
                                 "width": "100%",
                                 "position": "relative",
                                 "zIndex": 1,
                             },
                             style_cell={
-                                "textAlign": "left",
-                                "padding": "8px",
-                                "fontSize": "12px",
+                                "textAlign": "center",
+                                "padding": "8px 4px",
+                                "fontSize": "11px",
                                 "whiteSpace": "normal",
-                                "minWidth": "120px",
+                                "height": "60px",
+                                "verticalAlign": "middle",
                             },
                             style_header={
                                 "fontWeight": "bold",
@@ -505,13 +569,22 @@ layout = html.Div(
                                 "color": "white",
                                 "textAlign": "center",
                                 "padding": "8px",
+                                "fontSize": "12px",
                             },
                             style_data_conditional=[
                                 {
-                                    "if": {"row_index": "odd"},
-                                    "backgroundColor": "#f9f9f9",
-                                }
+                                    "if": {"row_index": 0},
+                                    "backgroundColor": "#f0f0f0",
+                                },
+                                {
+                                    "if": {"row_index": 1},
+                                    "backgroundColor": "#ffffff",
+                                },
                             ],
+                            css=[{
+                                'selector': '.dash-cell div',
+                                'rule': 'text-align: center; line-height: 1.2;'
+                            }]
                         ),
                     ],
                 ),
@@ -652,7 +725,7 @@ def wrap_header(text):
 
 def wrap_data(text, align=TA_CENTER):
     """Cria célula de dados com quebra de linha para PDF"""
-    if pd.isna(text):
+    if pd.isna(text) or text is None or text == "" or str(text).strip() == "":
         return Paragraph(
             "",
             ParagraphStyle(
@@ -668,6 +741,28 @@ def wrap_data(text, align=TA_CENTER):
             "data_pdf",
             fontSize=7,
             alignment=align,
+            leading=9,
+        ),
+    )
+
+def wrap_data_left(text):
+    """Cria célula de dados com alinhamento à esquerda para PDF"""
+    if pd.isna(text) or text is None or text == "" or str(text).strip() == "":
+        return Paragraph(
+            "",
+            ParagraphStyle(
+                "data_pdf_left",
+                fontSize=7,
+                alignment=TA_LEFT,
+                leading=9,
+            ),
+        )
+    return Paragraph(
+        str(text),
+        ParagraphStyle(
+            "data_pdf_left",
+            fontSize=7,
+            alignment=TA_LEFT,
             leading=9,
         ),
     )
@@ -749,7 +844,7 @@ def adicionar_cabecalho_relatorio(story, num_contrato):
     story.append(titulo)
     story.append(Spacer(1, 0.2 * inch))
 
-def criar_tabela_pdf(story, titulo, dados_header, dados_linhas, colWidths):
+def criar_tabela_pdf(story, titulo, dados_header, dados_linhas, colWidths, alinhamentos=None):
     """Cria tabela formatada no PDF com título azul e header cinza claro"""
     LARGURA_PADRAO = 6.7 * inch
     table_data = [dados_header] + dados_linhas
@@ -768,6 +863,15 @@ def criar_tabela_pdf(story, titulo, dados_header, dados_linhas, colWidths):
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
     ]
+    
+    # Aplicar alinhamentos personalizados se fornecidos
+    if alinhamentos:
+        for col_idx, align in enumerate(alinhamentos):
+            if align == "LEFT":
+                table_styles.append(("ALIGN", (col_idx, 1), (col_idx, -1), "LEFT"))
+            elif align == "RIGHT":
+                table_styles.append(("ALIGN", (col_idx, 1), (col_idx, -1), "RIGHT"))
+    
     tbl.setStyle(TableStyle(table_styles))
 
     # Título com mesma largura da tabela
@@ -796,8 +900,91 @@ def criar_tabela_pdf(story, titulo, dados_header, dados_linhas, colWidths):
     story.append(titulo_table)
     story.append(tbl)
 
+def criar_tabela_fiscalizacao_pdf(story, dados_equipes):
+    """Cria tabela de fiscalização no PDF no formato otimizado"""
+    if not dados_equipes:
+        return
+    
+    LARGURA_PADRAO = 6.7 * inch
+    num_equipes = len(dados_equipes)
+    
+    # Calcular largura das colunas proporcionalmente
+    col_width = LARGURA_PADRAO / num_equipes if num_equipes > 0 else LARGURA_PADRAO
+    
+    # Criar cabeçalhos vazios
+    headers = [wrap_header("") for _ in range(num_equipes)]
+    
+    # Criar linhas de dados
+    linhas = []
+    # Linha 1: Titulares (fundo cinza)
+    linha_titular = []
+    for i in range(num_equipes):
+        paragraph = formatar_fiscalizacao_para_pdf(
+            dados_equipes[i]["fiscalizacao_titular"],
+            dados_equipes[i]["servidor_titular"]
+        )
+        linha_titular.append(paragraph if paragraph else wrap_data(""))
+    linhas.append(linha_titular)
+    
+    # Linha 2: Substitutos (fundo branco)
+    linha_substituto = []
+    for i in range(num_equipes):
+        paragraph = formatar_fiscalizacao_para_pdf(
+            dados_equipes[i]["fiscalizacao_substituto"],
+            dados_equipes[i]["servidor_substituto"]
+        )
+        linha_substituto.append(paragraph if paragraph else wrap_data(""))
+    linhas.append(linha_substituto)
+    
+    # Criar tabela
+    table_data = [headers] + linhas
+    tbl = Table(table_data, colWidths=[col_width] * num_equipes, repeatRows=1)
+    
+    table_styles = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#f0f0f0")),  # Titular - fundo cinza
+        ("BACKGROUND", (0, 2), (-1, 2), colors.white),  # Substituto - fundo branco
+    ]
+    
+    tbl.setStyle(TableStyle(table_styles))
+
+    # Título
+    titulo_table = Table(
+        [[Paragraph(
+            "<b>EQUIPE DE FISCALIZAÇÃO DO CONTRATO</b>",
+            ParagraphStyle(
+                "titulo_secao",
+                alignment=TA_CENTER,
+                fontSize=9,
+                textColor=colors.white,
+                leading=10,
+            ),
+        )]],
+        colWidths=[LARGURA_PADRAO],
+    )
+    titulo_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, 0), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+    ]))
+
+    story.append(titulo_table)
+    story.append(tbl)
+
 def gerar_pdf_relatorio_extrato(
-    df_info, df_objeto, df_valores, df_fiscalizacao, df_garantia, df_evolucao, num_contrato, df_comprasnet
+    df_info, df_objeto, df_valores, df_fiscalizacao, df_garantia, df_evolucao, num_contrato, df_comprasnet, equipes_dados
 ):
     """Gera PDF do relatório em modo retrato"""
     buffer = BytesIO()
@@ -839,12 +1026,12 @@ def gerar_pdf_relatorio_extrato(
 
     # OBJETO E COMPRASNET
     if not df_objeto.empty:
-        header_objeto = [wrap_header("Objeto"), wrap_header("Comprasnet")]
+        header_objeto = [wrap_header("Objeto"), wrap_header("")]
         objeto_text = df_objeto["Objeto"].iloc[0] if not df_objeto.empty else ""
         comprasnet_url = df_comprasnet["Comprasnet"].iloc[0] if not df_comprasnet.empty else ""
         
         linhas_obj = [[
-            wrap_data(objeto_text, TA_LEFT),
+            wrap_data_left(objeto_text),
             Paragraph(
                 f"<a href='{comprasnet_url}'>{comprasnet_url}</a>" if comprasnet_url else "",
                 ParagraphStyle("link_pdf", fontSize=7, alignment=TA_CENTER, textColor=colors.blue, leading=9)
@@ -883,44 +1070,9 @@ def gerar_pdf_relatorio_extrato(
         ]))
         story.append(tbl_obj)
 
-    # FISCALIZAÇÃO - SEM LINHAS BRANCAS
-    if not df_fiscalizacao.empty:
-        header = [wrap_header(col) for col in df_fiscalizacao.columns]
-        linhas = []
-        for _, row in df_fiscalizacao.iterrows():
-            linha = [wrap_data(row[col], TA_LEFT) for col in df_fiscalizacao.columns]
-            linhas.append(linha)
-        col_widths = [1.85 * inch, 1.85 * inch, 1.5 * inch, 1.5 * inch]
-        
-        titulo_table = Table(
-            [[Paragraph("<b>EQUIPE DE FISCALIZAÇÃO DO CONTRATO</b>", ParagraphStyle("titulo_secao", alignment=TA_CENTER, fontSize=9, textColor=colors.white, leading=10))]],
-            colWidths=[6.7 * inch],
-        )
-        titulo_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-            ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, 0), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
-        ]))
-        story.append(titulo_table)
-        
-        tbl_fisc = Table([header] + linhas, colWidths=col_widths, repeatRows=1)
-        tbl_fisc.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9d9d9")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("FONTSIZE", (0, 0), (-1, -1), 7),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
-        ]))
-        story.append(tbl_fisc)
+    # FISCALIZAÇÃO - NOVO FORMATO OTIMIZADO
+    if equipes_dados:
+        criar_tabela_fiscalizacao_pdf(story, equipes_dados)
 
     # GARANTIA
     if not df_garantia.empty:
@@ -936,7 +1088,7 @@ def gerar_pdf_relatorio_extrato(
         col_widths = [0.744 * inch] * 9
         criar_tabela_pdf(story, "GARANTIA DE EXECUÇÃO CONTRATUAL", header, linhas, col_widths)
 
-    # EVOLUÇÃO - COM COLUNA ALTERAÇÃO E TIPO
+    # EVOLUÇÃO - COM COLUNA ALTERAÇÃO E TIPO - LARGURA PROPORCIONAL
     if not df_evolucao.empty:
         df_evolucao_fmt = df_evolucao.copy()
         for col in ["Valor", "Valor Atualizado"]:
@@ -956,13 +1108,17 @@ def gerar_pdf_relatorio_extrato(
             linha = [wrap_data(row[col]) for col in cols_to_display]
             linhas.append(linha)
         
-        # Ajustar larguras das colunas
+        # LARGURAS PROPORCIONAIS - mesmo padrão das outras tabelas
         if "Alteração" in df_evolucao_fmt.columns and "Tipo" in df_evolucao_fmt.columns:
-            col_widths = [1.0 * inch, 1.5 * inch, 1.0 * inch, 1.1 * inch, 1.1 * inch]
+            # 5 colunas: 15%, 30%, 15%, 20%, 20%
+            col_widths = [1.005 * inch, 2.01 * inch, 1.005 * inch, 1.34 * inch, 1.34 * inch]
+            alinhamentos = ["CENTER", "CENTER", "CENTER", "RIGHT", "RIGHT"]
         else:
-            col_widths = [1.5 * inch, 1.0 * inch, 1.1 * inch, 1.1 * inch]
+            # 4 colunas: 30%, 20%, 25%, 25%
+            col_widths = [2.01 * inch, 1.34 * inch, 1.675 * inch, 1.675 * inch]
+            alinhamentos = ["CENTER", "CENTER", "RIGHT", "RIGHT"]
         
-        criar_tabela_pdf(story, "EVOLUÇÃO DO CONTRATO", header, linhas, col_widths)
+        criar_tabela_pdf(story, "EVOLUÇÃO DO CONTRATO", header, linhas, col_widths, alinhamentos)
 
     doc.build(story)
     buffer.seek(0)
@@ -974,6 +1130,7 @@ def gerar_pdf_relatorio_extrato(
     Output("tabela_extrato_objeto", "data"),
     Output("tabela_extrato_valores", "data"),
     Output("tabela_extrato_fiscalizacao", "data"),
+    Output("tabela_extrato_fiscalizacao", "columns"),
     Output("tabela_extrato_garantia", "data"),
     Output("tabela_extrato_evolucao", "data"),
     Output("tabela_extrato_comprasnet", "data"),
@@ -983,7 +1140,7 @@ def gerar_pdf_relatorio_extrato(
 def atualizar_tabelas_extrato_cb(contrato):
     """Callback principal: atualiza todas as tabelas ao filtrar contrato"""
     if not contrato:
-        return [], [], [], [], [], [], [], ""
+        return [], [], [], [], [], [], [], [], ""
 
     dff = df_extrato_base[
         df_extrato_base["Contrato"]
@@ -991,7 +1148,7 @@ def atualizar_tabelas_extrato_cb(contrato):
         .str.contains(str(contrato).strip(), case=False, na=False)
     ]
     if dff.empty:
-        return [], [], [], [], [], [], [], ""
+        return [], [], [], [], [], [], [], [], ""
 
     dff_sorted = dff.copy()
     
@@ -1005,20 +1162,56 @@ def atualizar_tabelas_extrato_cb(contrato):
     
     df_objeto = dff_sorted[["Objeto"]].head(1).copy()
     
-    # COMPRASNET como link Markdown
+    # COMPRASNET como link Markdown - título vazio
     df_comp = dff_sorted[["Comprasnet"]].head(1).copy()
     df_comp["Comprasnet_link"] = df_comp["Comprasnet"].apply(
         lambda x: f"[{x}]({x})" if isinstance(x, str) and x.strip() else ""
     )
     
-    # FISCALIZAÇÃO: TODAS AS 10 DUPLAS - FILTRAR LINHAS BRANCAS
-    lista_fisc = []
-    for i in range(10):
-        df_fisc_i = gerar_grupo_fiscalizacao(dff_sorted, i)
-        lista_fisc.append(df_fisc_i)
-    df_fisc = pd.concat(lista_fisc, ignore_index=True)
-    mask = (df_fisc["Fiscalização"].astype(str).str.strip() != "") | (df_fisc["Servidor"].astype(str).str.strip() != "") | (df_fisc["Fiscalização (subst.)"].astype(str).str.strip() != "") | (df_fisc["Servidor (subst.)"].astype(str).str.strip() != "")
-    df_fisc = df_fisc[mask].reset_index(drop=True)
+    # FISCALIZAÇÃO: NOVO FORMATO OTIMIZADO - COLUNAS DINÂMICAS
+    equipes_dados = []
+    for i in range(10):  # Verificar até 10 equipes
+        dados_equipe = gerar_grupo_fiscalizacao_otimizado(dff_sorted, i)
+        # Verificar se há dados na equipe
+        if (dados_equipe["fiscalizacao_titular"] or dados_equipe["servidor_titular"] or 
+            dados_equipe["fiscalizacao_substituto"] or dados_equipe["servidor_substituto"]):
+            equipes_dados.append(dados_equipe)
+    
+    # Criar DataFrame para a tabela - 2 linhas (titular e substituto)
+    if equipes_dados:
+        dados_finais = []
+        colunas_tabela = []
+        
+        # Para cada linha (titular e substituto)
+        for linha_idx in range(2):
+            linha_dict = {}
+            for col_idx in range(len(equipes_dados)):
+                col_id = f"Equipe_{col_idx}"
+                if linha_idx == 0:  # Titular
+                    html_content = formatar_fiscalizacao_para_html(
+                        equipes_dados[col_idx]["fiscalizacao_titular"],
+                        equipes_dados[col_idx]["servidor_titular"]
+                    )
+                    linha_dict[col_id] = html_content
+                else:  # Substituto
+                    html_content = formatar_fiscalizacao_para_html(
+                        equipes_dados[col_idx]["fiscalizacao_substituto"],
+                        equipes_dados[col_idx]["servidor_substituto"]
+                    )
+                    linha_dict[col_id] = html_content
+            dados_finais.append(linha_dict)
+        
+        # Criar colunas com nome vazio
+        for col_idx in range(len(equipes_dados)):
+            colunas_tabela.append({
+                "name": "",  # NOME VAZIO
+                "id": f"Equipe_{col_idx}",
+            })
+        
+        df_fisc = pd.DataFrame(dados_finais)
+    else:
+        df_fisc = pd.DataFrame()
+        colunas_tabela = []
     
     df_garan = dff_sorted[cols_garantia].head(1).copy()
     for col in ["Base de cálculo", "Cobertura", "Valor contratado"]:
@@ -1028,30 +1221,10 @@ def atualizar_tabelas_extrato_cb(contrato):
     # EVOLUÇÃO: SEPARAR EM DUAS COLUNAS (ALTERAÇÃO E TIPO)
     lista_evol = []
     
-    # DEBUG: Verificar quais colunas realmente existem
-    print("DEBUG - Colunas disponíveis no DataFrame:")
-    colunas_alteracao = [c for c in dff_sorted.columns if "Alteração" in c or "Tipo" in c or "Valor" in c or "Vigência" in c]
-    for col in sorted(colunas_alteracao):
-        valor = dff_sorted[col].iloc[0] if col in dff_sorted.columns else "NÃO EXISTE"
-        print(f"{col}: {valor}")
-
-    # DEBUG específico para as primeiras alterações
-    print("\nDEBUG - Valores específicos:")
-    for i in range(1, 4):
-        print(f"{i}ª Alteração: {dff_sorted[f'{i}ª Alteração'].iloc[0] if f'{i}ª Alteração' in dff_sorted.columns else 'NÃO EXISTE'}")
-        print(f"Tipo.{i}: {dff_sorted[f'Tipo.{i}'].iloc[0] if f'Tipo.{i}' in dff_sorted.columns else 'NÃO EXISTE'}")
-        print(f"Valor.{i}: {dff_sorted[f'Valor.{i}'].iloc[0] if f'Valor.{i}' in dff_sorted.columns else 'NÃO EXISTE'}")
-        print(f"Valor Atualizado.{i}: {dff_sorted[f'Valor Atualizado.{i}'].iloc[0] if f'Valor Atualizado.{i}' in dff_sorted.columns else 'NÃO EXISTE'}")
-        print("---")
-    
     # Mapeamento CORRETO baseado nos dados reais
-    # Ajuste este mapeamento conforme os resultados do DEBUG acima
     alteracoes = [
-        # Primeira linha: 003/2023 | Apostila | | R$ 28.769,68 | R$ 662.226,76
         {"nome": "1ª Alteração", "alt_col": "1ª Alteração", "tipo_col": "Tipo", "vig_col": "Vigência", "valor_col": "Valor", "valor_at_col": "Valor Atualizado"},
-        # Segunda linha: 008/2023 | TA - Supressão | | R$ 4.659,81 | R$ 641.298,26
         {"nome": "2ª Alteração", "alt_col": "2ª Alteração", "tipo_col": "Tipo.1", "vig_col": "Vigência.1", "valor_col": "Valor.1", "valor_at_col": "Valor Atualizado.1"},
-        # Terceira linha: 008/2023 | Apostila | | R$ 637.617,12 | R$ 645.958,07
         {"nome": "3ª Alteração", "alt_col": "3ª Alteração", "tipo_col": "Tipo.2", "vig_col": "Vigência.2", "valor_col": "Valor.2", "valor_at_col": "Valor Atualizado.2"},
         {"nome": "4ª Alteração", "alt_col": "4ª Alteração", "tipo_col": "Tipo.3", "vig_col": "Vigência.3", "valor_col": "Valor.3", "valor_at_col": "Valor Atualizado.3"},
         {"nome": "5ª Alteração", "alt_col": "5ª Alteração", "tipo_col": "Tipo.4", "vig_col": "Vigência.4", "valor_col": "Valor.4", "valor_at_col": "Valor Atualizado.4"},
@@ -1065,14 +1238,12 @@ def atualizar_tabelas_extrato_cb(contrato):
     ]
     
     for alt in alteracoes:
-        # Para todas as alterações
         alteracao_valor = dff_sorted[alt["alt_col"]].iloc[0] if alt["alt_col"] in dff_sorted.columns and not pd.isna(dff_sorted[alt["alt_col"]].iloc[0]) else ""
         tipo_valor = dff_sorted[alt["tipo_col"]].iloc[0] if alt["tipo_col"] in dff_sorted.columns else ""
         vig_valor = dff_sorted[alt["vig_col"]].iloc[0] if alt["vig_col"] in dff_sorted.columns else ""
         valor_valor = dff_sorted[alt["valor_col"]].iloc[0] if alt["valor_col"] in dff_sorted.columns else ""
         valor_at_valor = dff_sorted[alt["valor_at_col"]].iloc[0] if alt["valor_at_col"] in dff_sorted.columns else ""
         
-        # Verificar se há dados para mostrar (mais rigoroso)
         has_data = any([
             pd.notna(alteracao_valor) and str(alteracao_valor).strip() != "",
             pd.notna(tipo_valor) and str(tipo_valor).strip() != "",
@@ -1094,12 +1265,8 @@ def atualizar_tabelas_extrato_cb(contrato):
     # Concatenar apenas se houver dados
     if lista_evol:
         df_evol_all = pd.concat(lista_evol, ignore_index=True)
-        
-        # Formatar valores monetários para exibição
         df_evol_all["Valor_fmt"] = df_evol_all["Valor"].apply(lambda x: formatar_moeda(x))
         df_evol_all["Valor Atualizado_fmt"] = df_evol_all["Valor Atualizado"].apply(lambda x: formatar_moeda(x))
-        
-        # Preparar DataFrame final para exibição
         df_evol_display = df_evol_all[["Alteração", "Tipo", "Vigência", "Valor_fmt", "Valor Atualizado_fmt"]].copy()
     else:
         df_evol_display = pd.DataFrame()
@@ -1109,6 +1276,7 @@ def atualizar_tabelas_extrato_cb(contrato):
         df_objeto.to_dict("records"),
         df_valores.to_dict("records"),
         df_fisc.to_dict("records"),
+        colunas_tabela,
         df_garan.to_dict("records"),
         df_evol_display.to_dict("records"),
         df_comp[["Comprasnet_link"]].to_dict("records"),
@@ -1154,21 +1322,23 @@ def download_relatorio_pdf(n_clicks, filtro_contrato):
     df_comprasnet = dff_sorted[["Comprasnet"]].head(1)
     df_valores = dff_sorted[cols_contrato_valores].head(1)
     
-    # Fiscalização: todas as 10 duplas - SEM LINHAS BRANCAS
-    lista_fisc = []
-    for i in range(10):
-        df_fisc_i = gerar_grupo_fiscalizacao(dff_sorted, i)
-        lista_fisc.append(df_fisc_i)
-    df_fisc = pd.concat(lista_fisc, ignore_index=True)
-    mask = (df_fisc["Fiscalização"].astype(str).str.strip() != "") | (df_fisc["Servidor"].astype(str).str.strip() != "") | (df_fisc["Fiscalização (subst.)"].astype(str).str.strip() != "") | (df_fisc["Servidor (subst.)"].astype(str).str.strip() != "")
-    df_fisc = df_fisc[mask].reset_index(drop=True)
+    # FISCALIZAÇÃO: Preparar dados no formato otimizado para PDF
+    equipes_dados_pdf = []
+    for i in range(10):  # Verificar até 10 equipes
+        dados_equipe = gerar_grupo_fiscalizacao_otimizado(dff_sorted, i)
+        # Verificar se há dados na equipe
+        if (dados_equipe["fiscalizacao_titular"] or dados_equipe["servidor_titular"] or 
+            dados_equipe["fiscalizacao_substituto"] or dados_equipe["servidor_substituto"]):
+            equipes_dados_pdf.append(dados_equipe)
+    
+    # Para o PDF, precisamos de um DataFrame vazio (os dados serão processados pela função específica)
+    df_fisc = pd.DataFrame()
     
     df_garan = dff_sorted[cols_garantia].head(1)
     
     # Evolução: SEPARAR EM DUAS COLUNAS (ALTERAÇÃO E TIPO)
     lista_evol = []
     
-    # Mapeamento CORRETO baseado nos dados reais (mesmo que acima)
     alteracoes = [
         {"nome": "1ª Alteração", "alt_col": "1ª Alteração", "tipo_col": "Tipo", "vig_col": "Vigência", "valor_col": "Valor", "valor_at_col": "Valor Atualizado"},
         {"nome": "2ª Alteração", "alt_col": "2ª Alteração", "tipo_col": "Tipo.1", "vig_col": "Vigência.1", "valor_col": "Valor.1", "valor_at_col": "Valor Atualizado.1"},
@@ -1185,14 +1355,12 @@ def download_relatorio_pdf(n_clicks, filtro_contrato):
     ]
     
     for alt in alteracoes:
-        # Para todas as alterações
         alteracao_valor = dff_sorted[alt["alt_col"]].iloc[0] if alt["alt_col"] in dff_sorted.columns and not pd.isna(dff_sorted[alt["alt_col"]].iloc[0]) else ""
         tipo_valor = dff_sorted[alt["tipo_col"]].iloc[0] if alt["tipo_col"] in dff_sorted.columns else ""
         vig_valor = dff_sorted[alt["vig_col"]].iloc[0] if alt["vig_col"] in dff_sorted.columns else ""
         valor_valor = dff_sorted[alt["valor_col"]].iloc[0] if alt["valor_col"] in dff_sorted.columns else ""
         valor_at_valor = dff_sorted[alt["valor_at_col"]].iloc[0] if alt["valor_at_col"] in dff_sorted.columns else ""
         
-        # Verificar se há dados para mostrar (mais rigoroso)
         has_data = any([
             pd.notna(alteracao_valor) and str(alteracao_valor).strip() != "",
             pd.notna(tipo_valor) and str(tipo_valor).strip() != "",
@@ -1217,7 +1385,7 @@ def download_relatorio_pdf(n_clicks, filtro_contrato):
         df_evol_all = pd.DataFrame()
 
     pdf_buffer = gerar_pdf_relatorio_extrato(
-        df_info, df_objeto, df_valores, df_fisc, df_garan, df_evol_all, num_contrato, df_comprasnet
+        df_info, df_objeto, df_valores, df_fisc, df_garan, df_evol_all, num_contrato, df_comprasnet, equipes_dados_pdf
     )
     
     return dcc.send_bytes(pdf_buffer.getvalue(), f"Extrato_{num_contrato}.pdf")
