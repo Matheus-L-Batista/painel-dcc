@@ -1,8 +1,8 @@
 import dash
-from dash import html, dcc, dash_table, Input, Output, State
+from dash import html, dcc, dash_table, Input, Output, State, callback_context
 import pandas as pd
 from io import BytesIO
-from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -176,18 +176,6 @@ botao_style = {
     "cursor": "pointer",
 }
 
-# Opções de processo (seleção) ordenadas pela linha mais recente (base global)
-df_proc_opts = df_status[["Processo", "Linha"]].copy()
-df_proc_opts = df_proc_opts.dropna(subset=["Processo"])
-df_proc_opts["Linha_num"] = pd.to_numeric(df_proc_opts["Linha"], errors="coerce")
-df_proc_opts = df_proc_opts.sort_values("Linha_num", ascending=False)
-df_proc_opts = df_proc_opts.drop_duplicates(subset=["Processo"], keep="first")
-
-processo_options = [
-    {"label": row["Processo"], "value": row["Processo"]}
-    for _, row in df_proc_opts.iterrows()
-]
-
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
@@ -212,33 +200,25 @@ layout = html.Div(
                         "alignItems": "flex-start",
                     },
                     children=[
-                        # Processo por digitação (contains)
+                        # Processo (alterado para Dropdown)
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
-                                html.Label("Processo (digitação)"),
-                                dcc.Input(
-                                    id="filtro_processo_texto",
-                                    type="text",
-                                    placeholder="Digite parte do processo",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
-                                ),
-                            ],
-                        ),
-                        # Processo por seleção (dropdown)
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Processo (seleção)"),
+                                html.Label("Processo"),
                                 dcc.Dropdown(
                                     id="filtro_processo",
-                                    options=processo_options,
-                                    value=None,
-                                    placeholder="Todos",
+                                    options=[
+                                        {"label": str(p), "value": str(p)}
+                                        for p in sorted(
+                                            df_status["Processo"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                        if str(p) != ""
+                                    ],
+                                    placeholder="Selecione um processo...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -251,7 +231,7 @@ layout = html.Div(
                                 dcc.Dropdown(
                                     id="filtro_requisitante",
                                     options=[
-                                        {"label": r, "value": r}
+                                        {"label": str(r), "value": str(r)}
                                         for r in sorted(
                                             df_status["Requisitante"]
                                             .dropna()
@@ -259,26 +239,33 @@ layout = html.Div(
                                         )
                                         if str(r) != ""
                                     ],
-                                    value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um requisitante...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
                         ),
-                        # Objeto por digitação (contains)
+                        # Objeto (alterado para Dropdown)
                         html.Div(
                             style={"minWidth": "260px", "flex": "2 1 320px"},
                             children=[
-                                html.Label("Objeto (digitação)"),
-                                dcc.Input(
+                                html.Label("Objeto"),
+                                dcc.Dropdown(
                                     id="filtro_objeto",
-                                    type="text",
-                                    placeholder="Digite parte do objeto",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
+                                    options=[
+                                        {"label": str(o), "value": str(o)}
+                                        for o in sorted(
+                                            df_status["Objeto"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                        if str(o) != ""
+                                    ],
+                                    placeholder="Selecione um objeto...",
+                                    clearable=True,
+                                    searchable=True,
+                                    style=dropdown_style,
                                 ),
                             ],
                         ),
@@ -290,7 +277,7 @@ layout = html.Div(
                                 dcc.Dropdown(
                                     id="filtro_modalidade",
                                     options=[
-                                        {"label": m, "value": m}
+                                        {"label": str(m), "value": str(m)}
                                         for m in sorted(
                                             df_status["Modalidade"]
                                             .dropna()
@@ -298,9 +285,9 @@ layout = html.Div(
                                         )
                                         if str(m) != ""
                                     ],
-                                    value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione uma modalidade...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -372,6 +359,9 @@ layout = html.Div(
                                 "color": "white",
                                 "zIndex": 2,
                             },
+                            # Não permite seleção de linhas ou células
+                            row_selectable=False,
+                            cell_selectable=False,
                         ),
                     ],
                 ),
@@ -428,6 +418,9 @@ layout = html.Div(
                                     "color": "white",
                                 },
                             ],
+                            # Não permite seleção de linhas ou células
+                            row_selectable=False,
+                            cell_selectable=False,
                         ),
                     ],
                 ),
@@ -469,65 +462,57 @@ def limpar_linhas_invalidas(df, colunas_check=None):
     return df[mask].copy()
 
 # --------------------------------------------------
+# Função auxiliar: filtrar dados com base nos filtros atuais
+# --------------------------------------------------
+def filtrar_dados(processo=None, requisitante=None, objeto=None, modalidade=None):
+    """Função auxiliar para filtrar dados com base nos valores dos filtros"""
+    dff = df_status.copy()
+    mask = pd.Series(True, index=dff.index)
+
+    if processo:
+        mask &= dff["Processo"] == processo
+
+    if requisitante:
+        mask &= dff["Requisitante"] == requisitante
+
+    if objeto:
+        mask &= dff["Objeto"] == objeto
+
+    if modalidade:
+        mask &= dff["Modalidade"] == modalidade
+
+    dff = dff[mask].copy()
+    return dff
+
+# --------------------------------------------------
 # Callback principal: tabelas (filtro ordem-invariante)
 # --------------------------------------------------
 @dash.callback(
     Output("tabela_status_esquerda", "data"),
     Output("tabela_status_direita", "data"),
     Output("store_dados_status", "data"),
-    Input("filtro_processo_texto", "value"),
     Input("filtro_processo", "value"),
     Input("filtro_requisitante", "value"),
     Input("filtro_objeto", "value"),
     Input("filtro_modalidade", "value"),
 )
 def atualizar_tabelas(
-    proc_texto,
-    proc_select,
+    processo,
     requisitante,
     objeto,
     modalidade,
 ):
-    dff = df_status.copy()
+    # Filtrar os dados
+    dff = filtrar_dados(processo, requisitante, objeto, modalidade)
 
-    mask = pd.Series(True, index=dff.index)
-
-    if proc_texto and str(proc_texto).strip():
-        termo = str(proc_texto).strip()
-        mask &= (
-            dff["Processo"]
-            .astype(str)
-            .str.contains(termo, case=False, na=False)
-        )
-
-    if proc_select:
-        mask &= dff["Processo"] == proc_select
-
-    if requisitante:
-        mask &= dff["Requisitante"] == requisitante
-
-    if objeto and str(objeto).strip():
-        termo_obj = str(objeto).strip()
-        mask &= (
-            dff["Objeto"]
-            .astype(str)
-            .str.contains(termo_obj, case=False, na=False)
-        )
-
-    if modalidade:
-        mask &= dff["Modalidade"] == modalidade
-
-    dff = dff[mask].copy()
-
+    # Ordenar pela linha
     try:
-        dff["Linha_ordenacao"] = pd.to_numeric(
-            dff["Linha"], errors="coerce"
-        )
+        dff["Linha_ordenacao"] = pd.to_numeric(dff["Linha"], errors="coerce")
     except Exception:
         dff["Linha_ordenacao"] = dff["Linha"]
     dff = dff.sort_values("Linha_ordenacao", ascending=False)
 
-    # Esquerda
+    # Esquerda: Dados do Processo
     mask_proc_valido = dff["Processo"].astype(str).str.strip().ne("")
     dff_esq = dff[mask_proc_valido].copy()
     dff_esq = dff_esq.drop_duplicates(subset=["Processo"], keep="first")
@@ -540,7 +525,7 @@ def atualizar_tabelas(
         ["Processo", "Requisitante", "Objeto", "Modalidade", "Linha"]
     ].to_dict("records")
 
-    # Direita
+    # Direita: Movimentações
     dff_dir = dff.copy()
     for c in ["Data Mov", "E/S", "Ação", "Deptº"]:
         dff_dir[c] = dff_dir[c].astype(str).str.strip()
@@ -593,94 +578,56 @@ def atualizar_tabelas(
     return dados_esquerda, dados_direita, dff_dir.to_dict("records")
 
 # --------------------------------------------------
-# Callback: filtros em cascata
+# --------------------------------------------------
+# Callback: atualizar opções dos filtros em cascata
 # --------------------------------------------------
 @dash.callback(
-    Output("filtro_requisitante", "options"),
-    Output("filtro_modalidade", "options"),
-    Output("filtro_processo", "options"),
-    Input("filtro_processo_texto", "value"),
+    Output("filtro_processo", "options", allow_duplicate=True),
+    Output("filtro_requisitante", "options", allow_duplicate=True),
+    Output("filtro_objeto", "options", allow_duplicate=True),
+    Output("filtro_modalidade", "options", allow_duplicate=True),
     Input("filtro_processo", "value"),
     Input("filtro_requisitante", "value"),
     Input("filtro_objeto", "value"),
     Input("filtro_modalidade", "value"),
+    prevent_initial_call=True
 )
-def atualizar_opcoes_filtros_status(
-    proc_texto,
-    proc_select,
-    requisitante,
-    objeto,
-    modalidade,
-):
-    dff = df_status.copy()
-    mask = pd.Series(True, index=dff.index)
-
-    if proc_texto and str(proc_texto).strip():
-        termo = str(proc_texto).strip()
-        mask &= (
-            dff["Processo"]
-            .astype(str)
-            .str.contains(termo, case=False, na=False)
-        )
-
-    if proc_select:
-        mask &= dff["Processo"] == proc_select
-
-    if requisitante:
-        mask &= dff["Requisitante"] == requisitante
-
-    if objeto and str(objeto).strip():
-        termo_obj = str(objeto).strip()
-        mask &= (
-            dff["Objeto"]
-            .astype(str)
-            .str.contains(termo_obj, case=False, na=False)
-        )
-
-    if modalidade:
-        mask &= dff["Modalidade"] == modalidade
-
-    dff = dff[mask].copy()
+def atualizar_opcoes_filtros_cascata(processo, requisitante, objeto, modalidade):
+    """Callback único para atualizar todas as opções dos filtros em cascata"""
+    # Filtrar dados com base nos valores atuais
+    dff = filtrar_dados(processo, requisitante, objeto, modalidade)
     dff = limpar_linhas_invalidas(dff)
 
+    # Gerar opções para cada filtro
+    op_processo = [
+        {"label": str(p), "value": str(p)}
+        for p in sorted(dff["Processo"].dropna().unique())
+        if str(p).strip().lower() not in ("", "nan", "none", "", "nat", "<na>")
+    ]
+
     op_requisitante = [
-        {"label": r, "value": r}
+        {"label": str(r), "value": str(r)}
         for r in sorted(dff["Requisitante"].dropna().unique())
-        if str(r).strip().lower()
-        not in ("", "nan", "none", "", "nat", "<na>")
+        if str(r).strip().lower() not in ("", "nan", "none", "", "nat", "<na>")
+    ]
+
+    op_objeto = [
+        {"label": str(o), "value": str(o)}
+        for o in sorted(dff["Objeto"].dropna().unique())
+        if str(o).strip().lower() not in ("", "nan", "none", "", "nat", "<na>")
     ]
 
     op_modalidade = [
-        {"label": m, "value": m}
+        {"label": str(m), "value": str(m)}
         for m in sorted(dff["Modalidade"].dropna().unique())
-        if str(m).strip().lower()
-        not in ("", "nan", "none", "", "nat", "<na>")
+        if str(m).strip().lower() not in ("", "nan", "none", "", "nat", "<na>")
     ]
 
-    df_proc_opts_local = dff[["Processo", "Linha"]].dropna(subset=["Processo"])
-    df_proc_opts_local["Linha_num"] = pd.to_numeric(
-        df_proc_opts_local["Linha"], errors="coerce"
-    )
-    df_proc_opts_local = df_proc_opts_local.sort_values(
-        "Linha_num", ascending=False
-    )
-    df_proc_opts_local = df_proc_opts_local.drop_duplicates(
-        subset=["Processo"], keep="first"
-    )
-    op_processo = [
-        {"label": row["Processo"], "value": row["Processo"]}
-        for _, row in df_proc_opts_local.iterrows()
-        if str(row["Processo"]).strip().lower()
-        not in ("", "nan", "none", "", "nat", "<na>")
-    ]
-
-    return op_requisitante, op_modalidade, op_processo
-
+    return op_processo, op_requisitante, op_objeto, op_modalidade
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
 @dash.callback(
-    Output("filtro_processo_texto", "value"),
     Output("filtro_processo", "value"),
     Output("filtro_requisitante", "value"),
     Output("filtro_objeto", "value"),
@@ -689,7 +636,7 @@ def atualizar_opcoes_filtros_status(
     prevent_initial_call=True,
 )
 def limpar_filtros_status(n):
-    return None, None, None, None, None
+    return None, None, None, None
 
 # ========================================
 # BLOCO PDF (ReportLab) – STATUS
@@ -825,10 +772,7 @@ def criar_tabela_dados_processo(story, df_esq, styles):
         linha = []
         for c in cols_esq:
             valor = str(row[c]).strip() if pd.notna(row[c]) else ""
-            if c in ["Objeto"]:
-                linha.append(wrap_pdf(valor))
-            else:
-                linha.append(simple_pdf(valor))
+            linha.append(simple_pdf(valor))  # Todos centralizados
         table_data_esq.append(linha)
 
     col_widths_esq = [
@@ -855,8 +799,8 @@ def criar_tabela_dados_processo(story, df_esq, styles):
         ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
         ("LINEBELOW", (0, 0), (-1, 0), 1.5, colors.HexColor("#0b2b57")),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 1), (-1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 1), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 1), (-1, -1), 7),
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
@@ -1050,7 +994,7 @@ def gerar_pdf_status(n, dados_status):
         return None
 
     buffer = BytesIO()
-    pagesize = landscape(A4)
+    pagesize = A4  # Formato retrato
 
     doc = SimpleDocTemplate(
         buffer,

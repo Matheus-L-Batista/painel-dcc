@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, dash_table, Input, Output, State
+from dash import html, dcc, dash_table, Input, Output, State, callback
 import pandas as pd
 from datetime import datetime
 
@@ -129,66 +129,41 @@ df_contratos_base = carregar_dados_contratos()
 # Função auxiliar: filtros em cascata independentes
 # --------------------------------------------------
 def filtrar_contratos(
-    objeto_texto,
-    setor_texto,
-    setor_drop,
+    contrato,
+    objeto,
+    setor,
     grupo,
-    empresa_texto,
-    empresa_drop,
+    empresa,
     status_vig,
 ):
     dff = df_contratos_base.copy()
 
+    # Contrato
+    if contrato:
+        dff = dff[dff["Contrato"] == contrato]
 
-    # Objeto (texto)
-    if objeto_texto and str(objeto_texto).strip():
-        termo = str(objeto_texto).strip().lower()
-        dff = dff[
-            dff["Objeto"].astype(str).str.lower().str.contains(termo, na=False)
-        ]
+    # Objeto
+    if objeto:
+        dff = dff[dff["Objeto"] == objeto]
 
-
-    # Setor (texto)
-    if setor_texto and str(setor_texto).strip():
-        termo = str(setor_texto).strip().lower()
-        dff = dff["Setor"].astype(str).str.lower().str.contains(termo, na=False)
-        dff = df_contratos_base.loc[dff]
-
-
-    # Setor (dropdown)
-    if setor_drop:
-        dff = dff[dff["Setor"] == setor_drop]
-
+    # Setor
+    if setor:
+        dff = dff[dff["Setor"] == setor]
 
     # Grupo
     if grupo:
         dff = dff[dff["Grupo"] == grupo]
 
-
-    # Empresa (texto)
-    if empresa_texto and str(empresa_texto).strip():
-        termo = str(empresa_texto).strip().lower()
-        dff = dff[
-            dff["Empresa Contratada"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
-
-
-    # Empresa (dropdown)
-    if empresa_drop:
-        dff = dff[dff["Empresa Contratada"] == empresa_drop]
-
+    # Empresa
+    if empresa:
+        dff = dff[dff["Empresa Contratada"] == empresa]
 
     # Status
     if status_vig:
         dff = dff[dff["Status da Vigência"] == status_vig]
 
-
     # remove linhas sem texto em Status da Vigência
     dff = dff[dff["Status da Vigência"].astype(str).str.strip() != ""]
-
 
     # Ordena por Término da Execução (mais recente em cima)
     dff["_termino_exec_dt"] = pd.to_datetime(
@@ -197,7 +172,6 @@ def filtrar_contratos(
     dff = dff.sort_values("_termino_exec_dt", ascending=False).drop(
         columns=["_termino_exec_dt"]
     )
-
 
     return dff
 
@@ -237,7 +211,7 @@ layout = html.Div(
             id="barra_filtros_contratos",
             className="filtros-sticky",
             children=[
-                # Linha 1: Objeto (texto), Setor (texto e dropdown)
+                # Linha 1: Contrato, Objeto, Setor
                 html.Div(
                     style={
                         "display": "flex",
@@ -249,36 +223,45 @@ layout = html.Div(
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
-                                html.Label("Contrato (digitação)"),
-                                dcc.Input(
-                                    id="filtro_contrato_texto",
-                                    type="text",
-                                    placeholder="Digite parte do contrato",
-                                    style={"width": "100%", "marginBottom": "6px"},
+                                html.Label("Contrato"),
+                                dcc.Dropdown(
+                                    id="filtro_contrato",
+                                    options=[
+                                        {"label": str(contrato), "value": str(contrato)}
+                                        for contrato in sorted(
+                                            df_contratos_base["Contrato"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                        if str(contrato).strip() != ""
+                                    ],
+                                    value=None,
+                                    placeholder="Selecione um contrato...",
+                                    clearable=True,
+                                    style=dropdown_style,
                                 ),
                             ],
                         ),
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
-                                html.Label("Objeto (digitação)"),
-                                dcc.Input(
-                                    id="filtro_objeto_texto",
-                                    type="text",
-                                    placeholder="Digite parte do objeto",
-                                    style={"width": "100%", "marginBottom": "6px"},
-                                ),
-                            ],
-                        ),
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Setor (digitação)"),
-                                dcc.Input(
-                                    id="filtro_setor_texto_ct",
-                                    type="text",
-                                    placeholder="Digite parte do setor",
-                                    style={"width": "100%", "marginBottom": "6px"},
+                                html.Label("Objeto"),
+                                dcc.Dropdown(
+                                    id="filtro_objeto",
+                                    options=[
+                                        {"label": str(objeto)[:80] + "..." if len(str(objeto)) > 80 else str(objeto), 
+                                         "value": str(objeto)}
+                                        for objeto in sorted(
+                                            df_contratos_base["Objeto"]
+                                            .dropna()
+                                            .unique()
+                                        )
+                                        if str(objeto).strip() != ""
+                                    ],
+                                    value=None,
+                                    placeholder="Selecione um objeto...",
+                                    clearable=True,
+                                    style=dropdown_style,
                                 ),
                             ],
                         ),
@@ -287,18 +270,18 @@ layout = html.Div(
                             children=[
                                 html.Label("Setor"),
                                 dcc.Dropdown(
-                                    id="filtro_setor_dropdown_ct",
+                                    id="filtro_setor",
                                     options=[
-                                        {"label": s, "value": s}
-                                        for s in sorted(
+                                        {"label": str(setor), "value": str(setor)}
+                                        for setor in sorted(
                                             df_contratos_base["Setor"]
                                             .dropna()
                                             .unique()
                                         )
-                                        if str(s).strip() != ""
+                                        if str(setor).strip() != ""
                                     ],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um setor...",
                                     clearable=True,
                                     style=dropdown_style,
                                 ),
@@ -306,7 +289,7 @@ layout = html.Div(
                         ),
                     ],
                 ),
-                # Linha 2: Empresa (texto/drop), Grupo, Status, botões
+                # Linha 2: Empresa, Grupo, Status, botões
                 html.Div(
                     style={
                         "display": "flex",
@@ -316,20 +299,7 @@ layout = html.Div(
                         "marginTop": "4px",
                     },
                     children=[
-                        # Empresa (digitação)
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Empresa (digitação)"),
-                                dcc.Input(
-                                    id="filtro_empresa_texto",
-                                    type="text",
-                                    placeholder="Digite parte do nome da empresa",
-                                    style={"width": "100%", "marginBottom": "6px"},
-                                ),
-                            ],
-                        ),
-                        # Empresa (dropdown)
+                        # Empresa
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
@@ -337,16 +307,17 @@ layout = html.Div(
                                 dcc.Dropdown(
                                     id="filtro_empresa",
                                     options=[
-                                        {"label": e, "value": e}
-                                        for e in sorted(
+                                        {"label": str(empresa)[:80] + "..." if len(str(empresa)) > 80 else str(empresa), 
+                                         "value": str(empresa)}
+                                        for empresa in sorted(
                                             df_contratos_base["Empresa Contratada"]
                                             .dropna()
                                             .unique()
                                         )
-                                        if str(e).strip() != ""
+                                        if str(empresa).strip() != ""
                                     ],
                                     value=None,
-                                    placeholder="Todas",
+                                    placeholder="Selecione uma empresa...",
                                     clearable=True,
                                     style=dropdown_style,
                                 ),
@@ -360,16 +331,16 @@ layout = html.Div(
                                 dcc.Dropdown(
                                     id="filtro_grupo",
                                     options=[
-                                        {"label": g, "value": g}
-                                        for g in sorted(
+                                        {"label": str(grupo), "value": str(grupo)}
+                                        for grupo in sorted(
                                             df_contratos_base["Grupo"]
                                             .dropna()
                                             .unique()
                                         )
-                                        if str(g).strip() != ""
+                                        if str(grupo).strip() != ""
                                     ],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um grupo...",
                                     clearable=True,
                                     style=dropdown_style,
                                 ),
@@ -391,7 +362,7 @@ layout = html.Div(
                                         {"label": "Vencido", "value": "Vencido"},
                                     ],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um status...",
                                     clearable=True,
                                     style=dropdown_style,
                                 ),
@@ -424,7 +395,6 @@ layout = html.Div(
                 ),
             ],
         ),
-
 
         dash_table.DataTable(
             id="tabela_contratos",
@@ -515,33 +485,31 @@ layout = html.Div(
 # --------------------------------------------------
 # Callback: filtros (tabela + store)
 # --------------------------------------------------
-@dash.callback(
+@callback(
     Output("tabela_contratos", "data"),
     Output("store_dados_contratos", "data"),
-    Input("filtro_objeto_texto", "value"),
-    Input("filtro_setor_texto_ct", "value"),
-    Input("filtro_setor_dropdown_ct", "value"),
+    Input("filtro_contrato", "value"),
+    Input("filtro_objeto", "value"),
+    Input("filtro_setor", "value"),
     Input("filtro_grupo", "value"),
-    Input("filtro_empresa_texto", "value"),
     Input("filtro_empresa", "value"),
     Input("filtro_status_vig", "value"),
+    prevent_initial_call=False  # Permitir chamada inicial
 )
 def atualizar_tabela_contratos(
-    objeto_texto,
-    setor_texto,
-    setor_drop,
+    contrato,
+    objeto,
+    setor,
     grupo,
-    empresa_texto,
-    empresa_drop,
+    empresa,
     status_vig,
 ):
     dff = filtrar_contratos(
-        objeto_texto,
-        setor_texto,
-        setor_drop,
+        contrato,
+        objeto,
+        setor,
         grupo,
-        empresa_texto,
-        empresa_drop,
+        empresa,
         status_vig,
     )
 
@@ -567,73 +535,91 @@ def atualizar_tabela_contratos(
 # --------------------------------------------------
 # Callback: opções dos filtros (cascata)
 # --------------------------------------------------
-@dash.callback(
-    Output("filtro_setor_dropdown_ct", "options"),
-    Output("filtro_empresa", "options"),
+@callback(
+    Output("filtro_contrato", "options"),
+    Output("filtro_objeto", "options"),
+    Output("filtro_setor", "options"),
     Output("filtro_grupo", "options"),
-    Input("filtro_objeto_texto", "value"),
-    Input("filtro_setor_texto_ct", "value"),
-    Input("filtro_setor_dropdown_ct", "value"),
+    Output("filtro_empresa", "options"),
+    Input("filtro_contrato", "value"),
+    Input("filtro_objeto", "value"),
+    Input("filtro_setor", "value"),
     Input("filtro_grupo", "value"),
-    Input("filtro_empresa_texto", "value"),
     Input("filtro_empresa", "value"),
     Input("filtro_status_vig", "value"),
+    prevent_initial_call=False  # Permitir chamada inicial
 )
 def atualizar_opcoes_filtros(
-    objeto_texto,
-    setor_texto,
-    setor_drop,
+    contrato,
+    objeto,
+    setor,
     grupo,
-    empresa_texto,
-    empresa_drop,
+    empresa,
     status_vig,
 ):
     dff = filtrar_contratos(
-        objeto_texto,
-        setor_texto,
-        setor_drop,
+        contrato,
+        objeto,
+        setor,
         grupo,
-        empresa_texto,
-        empresa_drop,
+        empresa,
         status_vig,
     )
 
+    # Opções para Contrato
+    op_contrato = [
+        {"label": str(c), "value": str(c)}
+        for c in sorted(dff["Contrato"].dropna().unique())
+        if str(c).strip()
+    ]
+
+    # Opções para Objeto (com truncamento para textos longos)
+    op_objeto = []
+    for obj in sorted(dff["Objeto"].dropna().unique()):
+        obj_str = str(obj)
+        label = obj_str[:80] + "..." if len(obj_str) > 80 else obj_str
+        op_objeto.append({"label": label, "value": obj_str})
+
+    # Opções para Setor
     op_setor = [
-        {"label": s, "value": s}
+        {"label": str(s), "value": str(s)}
         for s in sorted(dff["Setor"].dropna().unique())
         if str(s).strip()
     ]
-    op_empresa = [
-        {"label": e, "value": e}
-        for e in sorted(dff["Empresa Contratada"].dropna().unique())
-        if str(e).strip()
-    ]
+
+    # Opções para Grupo
     op_grupo = [
-        {"label": g, "value": g}
+        {"label": str(g), "value": str(g)}
         for g in sorted(dff["Grupo"].dropna().unique())
         if str(g).strip()
     ]
 
-    return op_setor, op_empresa, op_grupo
+    # Opções para Empresa (com truncamento para textos longos)
+    op_empresa = []
+    for emp in sorted(dff["Empresa Contratada"].dropna().unique()):
+        emp_str = str(emp)
+        label = emp_str[:80] + "..." if len(emp_str) > 80 else emp_str
+        op_empresa.append({"label": label, "value": emp_str})
+
+    return op_contrato, op_objeto, op_setor, op_grupo, op_empresa
 
 
 
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
-@dash.callback(
-    Output("filtro_objeto_texto", "value"),
-    Output("filtro_setor_texto_ct", "value"),
-    Output("filtro_setor_dropdown_ct", "value"),
-    Output("filtro_grupo", "value"),
-    Output("filtro_empresa_texto", "value"),
-    Output("filtro_empresa", "value"),
-    Output("filtro_status_vig", "value"),
+@callback(
+    Output("filtro_contrato", "value", allow_duplicate=True),
+    Output("filtro_objeto", "value", allow_duplicate=True),
+    Output("filtro_setor", "value", allow_duplicate=True),
+    Output("filtro_grupo", "value", allow_duplicate=True),
+    Output("filtro_empresa", "value", allow_duplicate=True),
+    Output("filtro_status_vig", "value", allow_duplicate=True),
     Input("btn_limpar_filtros_contratos", "n_clicks"),
     prevent_initial_call=True,
 )
 def limpar_filtros_contratos(n):
-    return None, None, None, None, None, None, None
+    return None, None, None, None, None, None
 
 
 
@@ -672,7 +658,7 @@ def wrap_header(text):
 # --------------------------------------------------
 # Callback: gerar PDF de contratos
 # --------------------------------------------------
-@dash.callback(
+@callback(
     Output("download_relatorio_contratos", "data"),
     Input("btn_download_relatorio_contratos", "n_clicks"),
     State("store_dados_contratos", "data"),

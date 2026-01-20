@@ -1,17 +1,10 @@
 import dash
-
 from dash import html, dcc, Input, Output, State, dash_table
-
 from dash.exceptions import PreventUpdate
-
 import pandas as pd
-
 from io import BytesIO
-
 from reportlab.lib.pagesizes import landscape, A4
-
 from reportlab.lib.units import inch
-
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
@@ -20,23 +13,14 @@ from reportlab.platypus import (
     TableStyle,
     Image,
 )
-
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-
 from reportlab.lib import colors
-
 import plotly.express as px
-
 import plotly.graph_objects as go
-
 from plotly.subplots import make_subplots
-
 from datetime import datetime
-
 from pytz import timezone
-
 import os
 
 # --------------------------------------------------
@@ -153,8 +137,8 @@ def carregar_dados_processos():
 
 df_proc_base = carregar_dados_processos()
 
-# Força ano padrão 2025
-ANO_PADRAO = 2025
+# Força ano padrão 2026
+ANO_PADRAO = 2026
 
 dropdown_style = {
     "color": "black",
@@ -208,18 +192,6 @@ MESES_ORDENADOS = [
     "dezembro",
 ]
 
-# Gera opções de mês respeitando a ordem janeiro-dezembro,
-# mas apenas para os meses que existem na base
-meses_disponiveis = (
-    df_proc_base["Mes_finalizacao"].dropna().unique().tolist()
-)
-
-options_mes_finalizacao = [
-    {"label": m.capitalize(), "value": m}
-    for m in MESES_ORDENADOS
-    if m in meses_disponiveis
-]
-
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
@@ -240,7 +212,7 @@ layout = html.Div(
                         "alignItems": "flex-start",
                     },
                     children=[
-                        # Filtro: Número do Processo (texto livre)
+                        # Filtro: Número do Processo (dropdown)
                         html.Div(
                             style={
                                 "minWidth": "200px",
@@ -248,20 +220,18 @@ layout = html.Div(
                             },
                             children=[
                                 html.Label("Número do Processo"),
-                                dcc.Input(
+                                dcc.Dropdown(
                                     id="filtro_num_proc",
-                                    type="text",
-                                    placeholder=(
-                                        "Digite o número completo ou parte"
-                                    ),
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
+                                    options=[],
+                                    value=None,
+                                    placeholder="Selecione um número de processo...",
+                                    clearable=True,
+                                    searchable=True,
+                                    style=dropdown_style,
                                 ),
                             ],
                         ),
-                        # Filtro: Ano (sempre obrigatório, default = 2025)
+                        # Filtro: Ano (sempre obrigatório, default = 2026)
                         html.Div(
                             style={
                                 "minWidth": "120px",
@@ -299,10 +269,11 @@ layout = html.Div(
                                 html.Label("Mês de Finalização"),
                                 dcc.Dropdown(
                                     id="filtro_mes_finalizacao",
-                                    options=options_mes_finalizacao,
+                                    options=[],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um mês...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -317,18 +288,11 @@ layout = html.Div(
                                 html.Label("Solicitante"),
                                 dcc.Dropdown(
                                     id="filtro_solicitante_proc",
-                                    options=[
-                                        {"label": s, "value": s}
-                                        for s in sorted(
-                                            df_proc_base["Solicitante"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(s) != ""
-                                    ],
+                                    options=[],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um solicitante...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -343,18 +307,11 @@ layout = html.Div(
                                 html.Label("Objeto"),
                                 dcc.Dropdown(
                                     id="filtro_objeto_proc",
-                                    options=[
-                                        {"label": o, "value": o}
-                                        for o in sorted(
-                                            df_proc_base["Objeto"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(o) != ""
-                                    ],
+                                    options=[],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um objeto...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -392,23 +349,11 @@ layout = html.Div(
                                         html.Label("Modalidade"),
                                         dcc.Dropdown(
                                             id="filtro_modalidade_proc",
-                                            options=[
-                                                {
-                                                    "label": m,
-                                                    "value": m,
-                                                }
-                                                for m in sorted(
-                                                    df_proc_base[
-                                                        "Modalidade"
-                                                    ]
-                                                    .dropna()
-                                                    .unique()
-                                                )
-                                                if str(m) != ""
-                                            ],
+                                            options=[],
                                             value=None,
-                                            placeholder="Todos",
+                                            placeholder="Selecione uma modalidade...",
                                             clearable=True,
+                                            searchable=True,
                                             style=dropdown_style,
                                         ),
                                     ],
@@ -423,21 +368,11 @@ layout = html.Div(
                                         html.Label("Status"),
                                         dcc.Dropdown(
                                             id="filtro_status_proc",
-                                            options=[
-                                                {
-                                                    "label": s,
-                                                    "value": s,
-                                                }
-                                                for s in sorted(
-                                                    df_proc_base["Status"]
-                                                    .dropna()
-                                                    .unique()
-                                                )
-                                                if str(s) != ""
-                                            ],
+                                            options=[],
                                             value=None,
-                                            placeholder="Todos",
+                                            placeholder="Selecione um status...",
                                             clearable=True,
+                                            searchable=True,
                                             style=dropdown_style,
                                         ),
                                     ],
@@ -454,23 +389,11 @@ layout = html.Div(
                                         ),
                                         dcc.Dropdown(
                                             id="filtro_classif_nc_proc",
-                                            options=[
-                                                {
-                                                    "label": c,
-                                                    "value": c,
-                                                }
-                                                for c in sorted(
-                                                    df_proc_base[
-                                                        "Classificação dos processos não concluídos"
-                                                    ]
-                                                    .dropna()
-                                                    .unique()
-                                                )
-                                                if str(c) != ""
-                                            ],
+                                            options=[],
                                             value=None,
-                                            placeholder="Todos",
+                                            placeholder="Selecione uma classificação...",
                                             clearable=True,
+                                            searchable=True,
                                             style=dropdown_style,
                                         ),
                                     ],
@@ -1039,6 +962,8 @@ def atualizar_tabela_proc(
 
 
 @dash.callback(
+    Output("filtro_num_proc", "options"),
+    Output("filtro_mes_finalizacao", "options"),
     Output("filtro_solicitante_proc", "options"),
     Output("filtro_objeto_proc", "options"),
     Output("filtro_modalidade_proc", "options"),
@@ -1051,6 +976,7 @@ def atualizar_tabela_proc(
     Input("filtro_modalidade_proc", "value"),
     Input("filtro_status_proc", "value"),
     Input("filtro_classif_nc_proc", "value"),
+    Input("filtro_num_proc", "value"),
 )
 def atualizar_opcoes_filtros(
     ano,
@@ -1060,6 +986,7 @@ def atualizar_opcoes_filtros(
     modalidade,
     status,
     classif_nc,
+    num_proc,
 ):
     """
     Gera opções de dropdown em cascata a partir de um único filtro global.
@@ -1068,6 +995,7 @@ def atualizar_opcoes_filtros(
     dff = df_proc_base.copy()
     mask = pd.Series(True, index=dff.index)
 
+    # Aplica todos os filtros
     if ano:
         mask &= dff["Ano"] == ano
     if mes_finalizacao:
@@ -1084,35 +1012,57 @@ def atualizar_opcoes_filtros(
         mask &= (
             dff["Classificação dos processos não concluídos"] == classif_nc
         )
+    if num_proc:
+        mask &= dff["Numero do Processo"] == num_proc
 
     dff = dff[mask]
 
+    # Opções para Número do Processo
+    op_num_proc = [
+        {"label": str(p), "value": str(p)}
+        for p in sorted(dff["Numero do Processo"].dropna().unique())
+        if str(p) != ""
+    ]
+
+    # Opções para Mês de Finalização (respeitando a ordem cronológica)
+    meses_disponiveis = dff["Mes_finalizacao"].dropna().unique().tolist()
+    op_mes_finalizacao = [
+        {"label": m.capitalize(), "value": m}
+        for m in MESES_ORDENADOS
+        if m in meses_disponiveis
+    ]
+
+    # Opções para Solicitante
     op_solicitante = [
-        {"label": s, "value": s}
+        {"label": str(s), "value": str(s)}
         for s in sorted(dff["Solicitante"].dropna().unique())
         if str(s) != ""
     ]
 
+    # Opções para Objeto
     op_objeto = [
-        {"label": o, "value": o}
+        {"label": str(o), "value": str(o)}
         for o in sorted(dff["Objeto"].dropna().unique())
         if str(o) != ""
     ]
 
+    # Opções para Modalidade
     op_modalidade = [
-        {"label": m, "value": m}
+        {"label": str(m), "value": str(m)}
         for m in sorted(dff["Modalidade"].dropna().unique())
         if str(m) != ""
     ]
 
+    # Opções para Status
     op_status = [
-        {"label": s, "value": s}
+        {"label": str(s), "value": str(s)}
         for s in sorted(dff["Status"].dropna().unique())
         if str(s) != ""
     ]
 
+    # Opções para Classificação
     op_classif = [
-        {"label": c, "value": c}
+        {"label": str(c), "value": str(c)}
         for c in sorted(
             dff["Classificação dos processos não concluídos"]
             .dropna()
@@ -1121,10 +1071,18 @@ def atualizar_opcoes_filtros(
         if str(c) != ""
     ]
 
-    return op_solicitante, op_objeto, op_modalidade, op_status, op_classif
+    return (
+        op_num_proc,
+        op_mes_finalizacao,
+        op_solicitante,
+        op_objeto,
+        op_modalidade,
+        op_status,
+        op_classif,
+    )
 
 # ----------------------------------------
-# Callback: limpar filtros (volta sempre para ano 2025)
+# Callback: limpar filtros (volta sempre para ano 2026)
 # ----------------------------------------
 
 
@@ -1142,13 +1100,12 @@ def atualizar_opcoes_filtros(
 )
 def limpar_filtros_proc(n):
     """
-    Limpa todos os filtros e retorna o ano para ANO_PADRAO (2025).
+    Limpa todos os filtros e retorna o ano para ANO_PADRAO (2026).
     """
     return None, ANO_PADRAO, None, None, None, None, None, None
 
 # ====================================================
 # FUNÇÕES AUXILIARES PARA PDF – COMPRAS
-# (mantidas iguais ao arquivo original)
 # ====================================================
 
 
@@ -1204,7 +1161,7 @@ def criar_card_elemento(titulo, valor, cor):
                     "BACKGROUND",
                     (0, 0),
                     (-1, -1),
-                    colors.HexColor("#F5F5F5"),
+                    colors.HexColor("#FFFFFF"),  # Alterado de #F5F5F5 para #FFFFFF
                 ),
                 (
                     "BORDER",

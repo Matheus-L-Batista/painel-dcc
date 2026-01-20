@@ -411,8 +411,8 @@ layout = html.Div(
                     },
                     children=[
                         html.Span(
-                            "Contrato ",
-                            style={"fontSize": "16px", "marginRight": "5px"},
+                            "CONTRATO ",
+                            style={"fontSize": "16px", "marginRight": "5px","fontFamily": "Arial"},
                         ),
                         html.Span(
                             id="valor_numero_contrato",
@@ -541,6 +541,7 @@ layout = html.Div(
                                 "color": "white",
                                 "textAlign": "center",
                                 "fontSize": "13px",
+                                "fontFamily": "Arial",
                             },
                         ),
                     ],
@@ -582,6 +583,7 @@ layout = html.Div(
                                 "color": "white",
                                 "textAlign": "center",
                                 "fontSize": "13px",
+                                "fontFamily": "Arial",
                             },
                         ),
                     ],
