@@ -1,3 +1,4 @@
+
 import dash
 from dash import html, dcc, dash_table, Input, Output, State
 import pandas as pd
@@ -179,73 +180,37 @@ layout = html.Div(
                                 html.Label("Setor de Origem"),
                                 dcc.Dropdown(
                                     id="filtro_setor_dropdown_planej",
-                                    options=[
-                                        {"label": s, "value": s}
-                                        for s in sorted(
-                                            df_portarias_base["Setor de Origem"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(s) != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um setor...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
                         ),
-                        # Servidor (digitação)
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Servidores (digitação)"),
-                                dcc.Input(
-                                    id="filtro_servidor_texto_planej",
-                                    type="text",
-                                    placeholder="Digite parte do nome",
-                                    style={"width": "100%", "marginBottom": "6px"},
-                                ),
-                            ],
-                        ),
-                        # Servidor (dropdown)
+                        # Servidor
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
                                 html.Label("Servidores"),
                                 dcc.Dropdown(
                                     id="filtro_servidor_dropdown_planej",
-                                    options=[
-                                        {"label": s, "value": s}
-                                        for s in SERVIDORES_UNICOS
-                                    ],
-                                    value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um servidor...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
                         ),
                         # Tipo
                         html.Div(
-                            style={"minWidth": "220px", "flex": "0 0 220px"},
+                            style={"minWidth": "220px", "flex": "0 0 320px"},
                             children=[
                                 html.Label("Tipo"),
                                 dcc.Dropdown(
                                     id="filtro_tipo_planej",
-                                    options=[
-                                        {"label": "Todos", "value": "TODOS"},
-                                        {
-                                            "label": "PLANEJAMENTO DA CONTRATAÇÃO",
-                                            "value": "PORTARIA DE PLANEJAMENTO DA CONTRATAÇÃO",
-                                        },
-                                        {
-                                            "label": "PLANEJAMENTO DA CONTRATAÇÃO - TI",
-                                            "value": "PORTARIA DE PLANEJAMENTO DA CONTRATAÇÃO - TI",
-                                        },
-                                    ],
-                                    value="TODOS",
-                                    clearable=False,
+                                    placeholder="Selecione um tipo...",
+                                    clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -367,14 +332,12 @@ layout = html.Div(
     Output("store_dados_port_planej", "data"),
     Input("filtro_numero_ano_planej", "value"),
     Input("filtro_setor_dropdown_planej", "value"),
-    Input("filtro_servidor_texto_planej", "value"),
     Input("filtro_servidor_dropdown_planej", "value"),
     Input("filtro_tipo_planej", "value"),
 )
 def atualizar_tabela_portarias_planej(
     numero_ano_texto,
     setor_drop,
-    servidor_texto,
     servidor_drop,
     tipo_sel,
 ):
@@ -387,7 +350,7 @@ def atualizar_tabela_portarias_planej(
     mask = pd.Series(True, index=dff.index)
 
     # Tipo
-    if tipo_sel and tipo_sel != "TODOS":
+    if tipo_sel:
         mask &= dff["TIPO"] == tipo_sel
 
     # Nº/ANO da Portaria (contains, case-insensitive)
@@ -404,17 +367,7 @@ def atualizar_tabela_portarias_planej(
     if setor_drop:
         mask &= dff["Setor de Origem"] == setor_drop
 
-    # Servidores por texto (contains em string concatenada)
-    if servidor_texto and str(servidor_texto).strip():
-        termo = str(servidor_texto).strip().lower()
-        mask &= (
-            dff["Servidores"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        )
-
-    # Servidor pelo dropdown (contains)
+    # Servidor dropdown (contains)
     if servidor_drop:
         termo = str(servidor_drop).strip().lower()
         mask &= (
@@ -466,14 +419,12 @@ def atualizar_tabela_portarias_planej(
     Output("filtro_tipo_planej", "options"),
     Input("filtro_numero_ano_planej", "value"),
     Input("filtro_setor_dropdown_planej", "value"),
-    Input("filtro_servidor_texto_planej", "value"),
     Input("filtro_servidor_dropdown_planej", "value"),
     Input("filtro_tipo_planej", "value"),
 )
 def atualizar_opcoes_filtros_portarias(
     numero_ano_texto,
     setor_drop,
-    servidor_texto,
     servidor_drop,
     tipo_sel,
 ):
@@ -487,7 +438,7 @@ def atualizar_opcoes_filtros_portarias(
     mask = pd.Series(True, index=dff.index)
 
     # Tipo
-    if tipo_sel and tipo_sel != "TODOS":
+    if tipo_sel:
         mask &= dff["TIPO"] == tipo_sel
 
     # Nº/ANO da Portaria
@@ -503,16 +454,6 @@ def atualizar_opcoes_filtros_portarias(
     # Setor de Origem
     if setor_drop:
         mask &= dff["Setor de Origem"] == setor_drop
-
-    # Servidor por texto
-    if servidor_texto and str(servidor_texto).strip():
-        termo = str(servidor_texto).strip().lower()
-        mask &= (
-            dff["Servidores"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        )
 
     # Servidor dropdown
     if servidor_drop:
@@ -552,24 +493,13 @@ def atualizar_opcoes_filtros_portarias(
         for s in servidores_unicos_filtrados
     ]
 
-    # Opções de Tipo, mantendo a opção "TODOS" sempre
-    tipos_presentes = sorted(
-        [t for t in dff["TIPO"].dropna().unique() if str(t).strip() != ""]
-    )
-    op_tipo = [{"label": "Todos", "value": "TODOS"}]
-
-    mapa_rotulos_tipo = {
-        "PORTARIA DE PLANEJAMENTO DA CONTRATAÇÃO": "PLANEJAMENTO DA CONTRATAÇÃO",
-        "PORTARIA DE PLANEJAMENTO DA CONTRATAÇÃO - TI": "PLANEJAMENTO DA CONTRATAÇÃO - TI",
-    }
-
-    for t in tipos_presentes:
-        op_tipo.append(
-            {
-                "label": mapa_rotulos_tipo.get(t, t),
-                "value": t,
-            }
+    # Opções de Tipo
+    op_tipo = [
+        {"label": t, "value": t}
+        for t in sorted(
+            [t for t in dff["TIPO"].dropna().unique() if str(t).strip() != ""]
         )
+    ]
 
     return op_setor, op_servidor, op_tipo
 
@@ -580,14 +510,13 @@ def atualizar_opcoes_filtros_portarias(
 @dash.callback(
     Output("filtro_numero_ano_planej", "value"),
     Output("filtro_setor_dropdown_planej", "value"),
-    Output("filtro_servidor_texto_planej", "value"),
     Output("filtro_servidor_dropdown_planej", "value"),
     Output("filtro_tipo_planej", "value"),
     Input("btn_limpar_filtros_port_planej", "n_clicks"),
     prevent_initial_call=True,
 )
 def limpar_filtros_port_planej(n):
-    return None, None, None, None, "TODOS"
+    return None, None, None, None
 
 
 # --------------------------------------------------
@@ -771,9 +700,9 @@ def gerar_pdf_port_planej(n, dados_port):
     col_widths = [
         0.9 * inch,               # Data
         1.2 * inch,               # N°/ANO da Portaria
-        1.6 * inch,               # Setor de Origem
+        1.2 * inch,               # Setor de Origem (REDUZIDA de 1.6 para 1.2)
         3.0 * inch,               # Servidores
-        page_width - (0.9 + 1.2 + 1.6 + 3.0) * inch,  # TIPO (restante)
+        page_width - (0.9 + 1.2 + 1.2 + 3.0) * inch,  # TIPO (AUMENTADA: restante)
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)

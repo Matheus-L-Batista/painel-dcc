@@ -3,7 +3,7 @@ from dash import html, dcc, dash_table, Input, Output, State
 import pandas as pd
 
 from io import BytesIO
-from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.pagesizes import portrait, A4  # ALTERADO: portrait em vez de landscape
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -493,6 +493,9 @@ layout = html.Div(
                             ],
                             data=[],
                             fixed_rows={"headers": True},
+                            row_selectable=False,  # ← ADICIONADO
+                            cell_selectable=False,  # ← ADICIONADO
+                            column_selectable=False,  # ← ADICIONADO
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
@@ -566,6 +569,9 @@ layout = html.Div(
                             ],
                             data=[],
                             fixed_rows={"headers": True},
+                            row_selectable=False,  # ← ADICIONADO
+                            cell_selectable=False,  # ← ADICIONADO
+                            column_selectable=False,  # ← ADICIONADO
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
@@ -639,6 +645,10 @@ def atualizar_tabelas_pca(
 ):
     dff_plan = df_planejamento.copy()
     dff_proc = tabela_processos_unida.copy()
+    
+    # FILTRAR FORA DFD "*" ← ADICIONADO
+    dff_plan = dff_plan[dff_plan["DFD"] != "*"]
+    dff_proc = dff_proc[dff_proc["DFD"] != "*"]
 
     if ano:
         dff_plan = dff_plan[dff_plan["Ano"] == str(ano)]
@@ -880,7 +890,7 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         return None
 
     buffer = BytesIO()
-    pagesize = landscape(A4)
+    pagesize = portrait(A4)  # ALTERADO: portrait em vez de landscape
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
@@ -1035,15 +1045,16 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                     linha.append(simple_pdf(valor))
             table_data_plan.append(linha)
 
+        # AJUSTAR LARGURAS PARA FORMATO RETRATO
         col_widths_plan = [
-            0.7 * inch,
-            1.1 * inch,
-            1.0 * inch,
-            0.5 * inch,
-            2.0 * inch,
-            0.95 * inch,
-            0.95 * inch,
-            0.95 * inch,
+            1.0 * inch,   # DFD
+            1.0 * inch,   # Área requisitante
+            1.2 * inch,   # Material ou Serviço
+            0.4 * inch,   # Item
+            1.0 * inch,   # Nome Classe/Grupo
+            1.0 * inch,   # Planejado
+            1.0 * inch,   # Executado
+            1.0 * inch,   # Saldo
         ]
         tbl_plan = Table(
             table_data_plan, colWidths=col_widths_plan, repeatRows=1
@@ -1172,15 +1183,16 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                     linha.append(simple_pdf(valor))
             table_data_proc.append(linha)
 
+        # AJUSTAR LARGURAS PARA FORMATO RETRATO
         col_widths_proc = [
-            0.7 * inch,
-            1.1 * inch,
-            1.0 * inch,
-            0.5 * inch,
-            1.1 * inch,
-            2.0 * inch,
-            2.0 * inch,
-            0.95 * inch,
+            0.8 * inch,   # DFD
+            0.9 * inch,   # Área requisitante
+            1.0 * inch,   # Material ou Serviço
+            0.5 * inch,   # Item
+            1.0 * inch,   # Processo
+            1.3 * inch,   # Objeto
+            1.3 * inch,   # Observações
+            1.0 * inch,   # Valor
         ]
         tbl_proc = Table(
             table_data_proc, colWidths=col_widths_proc, repeatRows=1

@@ -1,5 +1,6 @@
+
 import dash
-from dash import html, dcc, dash_table, Input, Output, State, callback
+from dash import html, dcc, dash_table, Input, Output, State, callback, ALL, MATCH, ctx
 import pandas as pd
 from datetime import datetime
 
@@ -120,7 +121,6 @@ def carregar_dados_contratos():
     return df
 
 
-
 df_contratos_base = carregar_dados_contratos()
 
 
@@ -129,8 +129,8 @@ df_contratos_base = carregar_dados_contratos()
 # Função auxiliar: filtros em cascata independentes
 # --------------------------------------------------
 def filtrar_contratos(
-    contrato,
-    objeto,
+    contrato_texto,
+    objeto_texto,
     setor,
     grupo,
     empresa,
@@ -138,29 +138,49 @@ def filtrar_contratos(
 ):
     dff = df_contratos_base.copy()
 
-    # Contrato
-    if contrato:
-        dff = dff[dff["Contrato"] == contrato]
+    # Contrato (texto) - busca parcial conforme digitação
+    if contrato_texto and str(contrato_texto).strip():
+        termo = str(contrato_texto).strip().lower()
+        dff = dff[
+            dff["Contrato"]
+            .astype(str)
+            .str.lower()
+            .str.contains(termo, na=False)
+        ]
 
-    # Objeto
-    if objeto:
-        dff = dff[dff["Objeto"] == objeto]
+    # Objeto (texto) - busca parcial conforme digitação
+    if objeto_texto and str(objeto_texto).strip():
+        termo = str(objeto_texto).strip().lower()
+        dff = dff[
+            dff["Objeto"]
+            .astype(str)
+            .str.lower()
+            .str.contains(termo, na=False)
+        ]
 
-    # Setor
+    # Setor - agora aceita lista de valores
     if setor:
-        dff = dff[dff["Setor"] == setor]
+        if isinstance(setor, str):
+            setor = [setor]
+        dff = dff[dff["Setor"].isin(setor)]
 
-    # Grupo
+    # Grupo - agora aceita lista de valores
     if grupo:
-        dff = dff[dff["Grupo"] == grupo]
+        if isinstance(grupo, str):
+            grupo = [grupo]
+        dff = dff[dff["Grupo"].isin(grupo)]
 
-    # Empresa
+    # Empresa - agora aceita lista de valores
     if empresa:
-        dff = dff[dff["Empresa Contratada"] == empresa]
+        if isinstance(empresa, str):
+            empresa = [empresa]
+        dff = dff[dff["Empresa Contratada"].isin(empresa)]
 
-    # Status
+    # Status - agora aceita lista de valores
     if status_vig:
-        dff = dff[dff["Status da Vigência"] == status_vig]
+        if isinstance(status_vig, str):
+            status_vig = [status_vig]
+        dff = dff[dff["Status da Vigência"].isin(status_vig)]
 
     # remove linhas sem texto em Status da Vigência
     dff = dff[dff["Status da Vigência"].astype(str).str.strip() != ""]
@@ -184,6 +204,15 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
+input_style = {
+    "width": "100%",
+    "padding": "8px",
+    "border": "1px solid #ccc",
+    "borderRadius": "4px",
+    "fontSize": "12px",
+    "marginBottom": "6px",
+}
+
 
 # --------------------------------------------------
 # Estilo dos botões (fundo azul, texto branco)
@@ -203,7 +232,7 @@ botao_style = {
 
 
 # --------------------------------------------------
-# Layout
+# Layout (Contrato e Objeto são Inputs de texto com busca em tempo real)
 # --------------------------------------------------
 layout = html.Div(
     children=[
@@ -224,21 +253,12 @@ layout = html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
                                 html.Label("Contrato"),
-                                dcc.Dropdown(
+                                dcc.Input(
                                     id="filtro_contrato",
-                                    options=[
-                                        {"label": str(contrato), "value": str(contrato)}
-                                        for contrato in sorted(
-                                            df_contratos_base["Contrato"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(contrato).strip() != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Selecione um contrato...",
-                                    clearable=True,
-                                    style=dropdown_style,
+                                    type="text",
+                                    placeholder="Digite parte do número do contrato...",
+                                    value="",
+                                    style=input_style,
                                 ),
                             ],
                         ),
@@ -246,22 +266,12 @@ layout = html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
                                 html.Label("Objeto"),
-                                dcc.Dropdown(
+                                dcc.Input(
                                     id="filtro_objeto",
-                                    options=[
-                                        {"label": str(objeto)[:80] + "..." if len(str(objeto)) > 80 else str(objeto), 
-                                         "value": str(objeto)}
-                                        for objeto in sorted(
-                                            df_contratos_base["Objeto"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(objeto).strip() != ""
-                                    ],
-                                    value=None,
-                                    placeholder="Selecione um objeto...",
-                                    clearable=True,
-                                    style=dropdown_style,
+                                    type="text",
+                                    placeholder="Digite parte do objeto do contrato...",
+                                    value="",
+                                    style=input_style,
                                 ),
                             ],
                         ),
@@ -280,9 +290,11 @@ layout = html.Div(
                                         )
                                         if str(setor).strip() != ""
                                     ],
-                                    value=None,
-                                    placeholder="Selecione um setor...",
+                                    value=[],
+                                    placeholder="Selecione um ou mais setores...",
                                     clearable=True,
+                                    multi=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -316,9 +328,11 @@ layout = html.Div(
                                         )
                                         if str(empresa).strip() != ""
                                     ],
-                                    value=None,
-                                    placeholder="Selecione uma empresa...",
+                                    value=[],
+                                    placeholder="Selecione uma ou mais empresas...",
                                     clearable=True,
+                                    multi=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -339,9 +353,11 @@ layout = html.Div(
                                         )
                                         if str(grupo).strip() != ""
                                     ],
-                                    value=None,
-                                    placeholder="Selecione um grupo...",
+                                    value=[],
+                                    placeholder="Selecione um ou mais grupos...",
                                     clearable=True,
+                                    multi=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -361,9 +377,11 @@ layout = html.Div(
                                         },
                                         {"label": "Vencido", "value": "Vencido"},
                                     ],
-                                    value=None,
-                                    placeholder="Selecione um status...",
+                                    value=[],
+                                    placeholder="Selecione um ou mais status...",
                                     clearable=True,
+                                    multi=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -483,7 +501,7 @@ layout = html.Div(
 
 
 # --------------------------------------------------
-# Callback: filtros (tabela + store)
+# Callback: filtros (tabela + store) - ATUALIZAÇÃO EM TEMPO REAL
 # --------------------------------------------------
 @callback(
     Output("tabela_contratos", "data"),
@@ -497,16 +515,17 @@ layout = html.Div(
     prevent_initial_call=False  # Permitir chamada inicial
 )
 def atualizar_tabela_contratos(
-    contrato,
-    objeto,
+    contrato_texto,
+    objeto_texto,
     setor,
     grupo,
     empresa,
     status_vig,
 ):
+    # Este callback só será executado quando a página de contratos estiver ativa
     dff = filtrar_contratos(
-        contrato,
-        objeto,
+        contrato_texto,
+        objeto_texto,
         setor,
         grupo,
         empresa,
@@ -533,11 +552,9 @@ def atualizar_tabela_contratos(
 
 
 # --------------------------------------------------
-# Callback: opções dos filtros (cascata)
+# Callback: opções dos filtros (cascata) - ATUALIZAÇÃO EM TEMPO REAL
 # --------------------------------------------------
 @callback(
-    Output("filtro_contrato", "options"),
-    Output("filtro_objeto", "options"),
     Output("filtro_setor", "options"),
     Output("filtro_grupo", "options"),
     Output("filtro_empresa", "options"),
@@ -550,35 +567,22 @@ def atualizar_tabela_contratos(
     prevent_initial_call=False  # Permitir chamada inicial
 )
 def atualizar_opcoes_filtros(
-    contrato,
-    objeto,
+    contrato_texto,
+    objeto_texto,
     setor,
     grupo,
     empresa,
     status_vig,
 ):
+    # Este callback só será executado quando a página de contratos estiver ativa
     dff = filtrar_contratos(
-        contrato,
-        objeto,
+        contrato_texto,
+        objeto_texto,
         setor,
         grupo,
         empresa,
         status_vig,
     )
-
-    # Opções para Contrato
-    op_contrato = [
-        {"label": str(c), "value": str(c)}
-        for c in sorted(dff["Contrato"].dropna().unique())
-        if str(c).strip()
-    ]
-
-    # Opções para Objeto (com truncamento para textos longos)
-    op_objeto = []
-    for obj in sorted(dff["Objeto"].dropna().unique()):
-        obj_str = str(obj)
-        label = obj_str[:80] + "..." if len(obj_str) > 80 else obj_str
-        op_objeto.append({"label": label, "value": obj_str})
 
     # Opções para Setor
     op_setor = [
@@ -601,7 +605,7 @@ def atualizar_opcoes_filtros(
         label = emp_str[:80] + "..." if len(emp_str) > 80 else emp_str
         op_empresa.append({"label": label, "value": emp_str})
 
-    return op_contrato, op_objeto, op_setor, op_grupo, op_empresa
+    return op_setor, op_grupo, op_empresa
 
 
 
@@ -619,7 +623,9 @@ def atualizar_opcoes_filtros(
     prevent_initial_call=True,
 )
 def limpar_filtros_contratos(n):
-    return None, None, None, None, None, None
+    # Este callback só será executado quando a página de contratos estiver ativa
+    # Retorna string vazia para Inputs e lista vazia para Dropdowns multi
+    return "", "", [], [], [], []
 
 
 

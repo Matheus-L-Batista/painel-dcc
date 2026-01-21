@@ -1,3 +1,4 @@
+
 import dash
 from dash import html, dcc, dash_table, Input, Output, State, no_update
 
@@ -8,7 +9,7 @@ from pytz import timezone
 
 from io import BytesIO
 
-from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.pagesizes import portrait, A4  # Mudado de landscape para portrait
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -20,7 +21,7 @@ from reportlab.platypus import (
 )
 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT  # Adicionado TA_LEFT
 from reportlab.lib import colors
 import os
 
@@ -646,18 +647,26 @@ def limpar_filtros_limite_itajuba(n):
 
 wrap_style_data = ParagraphStyle(
     name="wrap_limite_itajuba_data",
-    fontSize=8,
-    leading=10,
+    fontSize=7,  # Reduzido para melhor ajuste no modo retrato
+    leading=9,
     alignment=TA_CENTER,
     textColor=colors.black,
 )
 
 wrap_style_header = ParagraphStyle(
     name="wrap_limite_itajuba_header",
-    fontSize=8,
-    leading=10,
+    fontSize=7,  # Reduzido para melhor ajuste no modo retrato
+    leading=9,
     alignment=TA_CENTER,
     textColor=colors.white,
+)
+
+wrap_style_desc = ParagraphStyle(
+    name="wrap_limite_itajuba_desc",
+    fontSize=7,
+    leading=9,
+    alignment=TA_LEFT,  # Alinhamento à esquerda para a descrição
+    textColor=colors.black,
 )
 
 
@@ -667,6 +676,10 @@ def wrap_data(text):
 
 def wrap_header(text):
     return Paragraph(str(text), wrap_style_header)
+
+
+def wrap_desc(text):
+    return Paragraph(str(text), wrap_style_desc)
 
 
 @dash.callback(
@@ -685,7 +698,7 @@ def gerar_pdf_limite_itajuba(n, dados):
     df = df[df[COL_CATSER] != "00000"]
 
     buffer = BytesIO()
-    pagesize = landscape(A4)
+    pagesize = portrait(A4)  # Mudado para retrato
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
@@ -725,20 +738,20 @@ def gerar_pdf_limite_itajuba(n, dados):
 
     # Cabeçalho: Logo | Texto | Logo
     logo_esq = (
-        Image("assets/brasaobrasil.png", 1.2 * inch, 1.2 * inch)
+        Image("assets/brasaobrasil.png", 1.0 * inch, 1.0 * inch)  # Reduzido para melhor ajuste
         if os.path.exists("assets/brasaobrasil.png")
         else ""
     )
 
     logo_dir = (
-        Image("assets/simbolo_RGB.png", 1.2 * inch, 1.2 * inch)
+        Image("assets/simbolo_RGB.png", 1.0 * inch, 1.0 * inch)  # Reduzido para melhor ajuste
         if os.path.exists("assets/simbolo_RGB.png")
         else ""
     )
     texto_instituicao = (
-        "<b><font color='#0b2b57' size=13>Ministério da Educação</font></b><br/>"
-        "<b><font color='#0b2b57' size=13>Universidade Federal de Itajubá</font></b><br/>"
-        "<font color='#0b2b57' size=11>Diretoria de Compras e Contratos</font>"
+        "<b><font color='#0b2b57' size=12>Ministério da Educação</font></b><br/>"
+        "<b><font color='#0b2b57' size=12>Universidade Federal de Itajubá</font></b><br/>"
+        "<font color='#0b2b57' size=10>Diretoria de Compras e Contratos</font>"
     )
 
     instituicao = Paragraph(
@@ -746,13 +759,13 @@ def gerar_pdf_limite_itajuba(n, dados):
         ParagraphStyle(
             "instituicao",
             alignment=TA_CENTER,
-            leading=16,
+            leading=14,
         ),
     )
 
     cabecalho = Table(
         [[logo_esq, instituicao, logo_dir]],
-        colWidths=[1.4 * inch, 4.2 * inch, 1.4 * inch],
+        colWidths=[1.2 * inch, 3.5 * inch, 1.2 * inch],  # Ajustado para retrato
     )
 
     cabecalho.setStyle(
@@ -773,7 +786,7 @@ def gerar_pdf_limite_itajuba(n, dados):
     titulo = Paragraph(
         "Consulta ao Fracionamento de Despesa 2026 - CATSER (Serviço): "
         "UASG: 153030 - Campus Itajubá",
-    ParagraphStyle(
+        ParagraphStyle(
             "titulo",
             alignment=TA_CENTER,
             fontSize=10,
@@ -821,15 +834,25 @@ def gerar_pdf_limite_itajuba(n, dados):
     saldo_values = df["Saldo para contratação"].fillna(0).tolist()
 
     for _, row in df_pdf[cols].iterrows():
-        table_data.append([wrap_data(row[c]) for c in cols])
+        # Trata cada coluna separadamente
+        row_data = []
+        for i, c in enumerate(cols):
+            if i == 1:  # Coluna Descrição - alinhamento à esquerda
+                row_data.append(wrap_desc(row[c]))
+            elif i == 0:  # CATSER - alinhamento ao centro
+                row_data.append(wrap_data(row[c]))
+            else:  # Colunas numéricas - alinhamento ao centro
+                row_data.append(wrap_data(row[c]))
+        table_data.append(row_data)
 
     page_width = pagesize[0] - 0.6 * inch
+    # Ajuste das larguras das colunas para modo retrato
     col_widths = [
-        0.9 * inch,
-        page_width - (0.9 + 1.1 + 1.1 + 1.1) * inch,
-        1.1 * inch,
-        1.1 * inch,
-        1.1 * inch,
+        0.8 * inch,  # CATSER
+        2.5 * inch,  # Descrição (mais larga)
+        1.0 * inch,  # Valor Empenhado
+        1.0 * inch,  # Limite da Dispensa
+        1.0 * inch,  # Saldo para contratação
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -841,6 +864,8 @@ def gerar_pdf_limite_itajuba(n, dados):
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
+        # Descrição alinhada à esquerda
+        ("ALIGN", (1, 1), (1, -1), "LEFT"),
         # Linhas alternadas: branca e cinza-claro (a partir da linha 1)
         (
             "ROWBACKGROUNDS",
@@ -849,10 +874,6 @@ def gerar_pdf_limite_itajuba(n, dados):
             [colors.white, colors.whitesmoke],
         ),
     ]
-
-    # Descrição alinhada à esquerda
-    for i in range(1, len(table_data)):
-        table_styles.append(("ALIGN", (1, i), (1, i), "LEFT"))
 
     # Linhas com saldo <= 0 em vermelho
     for i, saldo in enumerate(saldo_values, 1):

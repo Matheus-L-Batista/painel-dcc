@@ -170,26 +170,13 @@ botao_style = {
 # Função auxiliar: filtros
 # --------------------------------------------------
 def filtrar_fiscais(
-    servidores_texto,
     servidores_drop,
     contrato_texto,
-    contrato_drop,
     objeto_texto,
-    contratada_texto,
     contratada_drop,
     status,
 ):
     dff = df_fiscais_base.copy()
-
-    # Servidores (digitação)
-    if servidores_texto and str(servidores_texto).strip():
-        termo = str(servidores_texto).strip().lower()
-        dff = dff[
-            dff["Servidores"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
 
     # Servidores (dropdown)
     if servidores_drop:
@@ -211,25 +198,11 @@ def filtrar_fiscais(
             .str.contains(termo, na=False)
         ]
 
-    # Contrato (dropdown) – normalmente None
-    if contrato_drop:
-        dff = dff[dff["Contrato"] == contrato_drop]
-
     # Objeto (texto)
     if objeto_texto and str(objeto_texto).strip():
         termo = str(objeto_texto).strip().lower()
         dff = dff[
             dff["Objeto"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
-
-    # Contratada (texto)
-    if contratada_texto and str(contratada_texto).strip():
-        termo = str(contratada_texto).strip().lower()
-        dff = dff[
-            dff["Contratada"]
             .astype(str)
             .str.lower()
             .str.contains(termo, na=False)
@@ -274,22 +247,6 @@ layout = html.Div(
                         "alignItems": "flex-start",
                     },
                     children=[
-                        # Servidores (digitação)
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Servidores (digitação)"),
-                                dcc.Input(
-                                    id="filtro_servidores_texto_fis",
-                                    type="text",
-                                    placeholder="Digite parte do nome do servidor",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
-                                ),
-                            ],
-                        ),
                         # Servidores (dropdown)
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
@@ -302,8 +259,9 @@ layout = html.Div(
                                         for s in SERVIDORES_UNICOS_FIS
                                     ],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Selecione um servidor...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -312,7 +270,7 @@ layout = html.Div(
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
-                                html.Label("Contrato (digitação)"),
+                                html.Label("Contrato"),
                                 dcc.Input(
                                     id="filtro_contrato_texto_fis",
                                     type="text",
@@ -328,7 +286,7 @@ layout = html.Div(
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
-                                html.Label("Objeto (digitação)"),
+                                html.Label("Objeto"),
                                 dcc.Input(
                                     id="filtro_objeto_texto",
                                     type="text",
@@ -342,7 +300,7 @@ layout = html.Div(
                         ),
                     ],
                 ),
-                # Linha 2: Contratada (texto/drop), Status, botões
+                # Linha 2: Contratada, Status, botões
                 html.Div(
                     style={
                         "display": "flex",
@@ -352,22 +310,6 @@ layout = html.Div(
                         "marginTop": "4px",
                     },
                     children=[
-                        # Contratada (digitação)
-                        html.Div(
-                            style={"minWidth": "220px", "flex": "1 1 260px"},
-                            children=[
-                                html.Label("Contratada (digitação)"),
-                                dcc.Input(
-                                    id="filtro_contratada_texto_fis",
-                                    type="text",
-                                    placeholder="Digite parte da contratada",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
-                                ),
-                            ],
-                        ),
                         # Contratada (dropdown)
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
@@ -385,8 +327,9 @@ layout = html.Div(
                                         if str(e).strip() != ""
                                     ],
                                     value=None,
-                                    placeholder="Todas",
+                                    placeholder="Selecione uma contratada...",
                                     clearable=True,
+                                    searchable=True,
                                     style=dropdown_style,
                                 ),
                             ],
@@ -413,7 +356,7 @@ layout = html.Div(
                                         },
                                     ],
                                     value=None,
-                                    placeholder="Todos",
+                                    placeholder="Todos os status",
                                     clearable=True,
                                     style=dropdown_style,
                                 ),
@@ -535,30 +478,23 @@ layout = html.Div(
 @dash.callback(
     Output("tabela_fiscais", "data"),
     Output("store_dados_fis", "data"),
-    Input("filtro_servidores_texto_fis", "value"),
     Input("filtro_servidores_dropdown_fis", "value"),
     Input("filtro_contrato_texto_fis", "value"),
     Input("filtro_objeto_texto", "value"),
-    Input("filtro_contratada_texto_fis", "value"),
     Input("filtro_contratada_dropdown_fis", "value"),
     Input("filtro_status_fis", "value"),
 )
 def atualizar_tabela_fiscais(
-    servidores_texto,
     servidores_drop,
     contrato_texto,
     objeto_texto,
-    contratada_texto,
     contratada_drop,
     status,
 ):
     dff = filtrar_fiscais(
-        servidores_texto,
         servidores_drop,
         contrato_texto,
-        None,           # contrato_drop não usado
         objeto_texto,
-        contratada_texto,
         contratada_drop,
         status,
     )
@@ -594,30 +530,23 @@ def atualizar_tabela_fiscais(
 @dash.callback(
     Output("filtro_servidores_dropdown_fis", "options"),
     Output("filtro_contratada_dropdown_fis", "options"),
-    Input("filtro_servidores_texto_fis", "value"),
     Input("filtro_servidores_dropdown_fis", "value"),
     Input("filtro_contrato_texto_fis", "value"),
     Input("filtro_objeto_texto", "value"),
-    Input("filtro_contratada_texto_fis", "value"),
     Input("filtro_contratada_dropdown_fis", "value"),
     Input("filtro_status_fis", "value"),
 )
 def atualizar_opcoes_filtros_fis(
-    servidores_texto,
     servidores_drop,
     contrato_texto,
     objeto_texto,
-    contratada_texto,
     contratada_drop,
     status,
 ):
     dff = filtrar_fiscais(
-        servidores_texto,
         servidores_drop,
         contrato_texto,
-        None,
         objeto_texto,
-        contratada_texto,
         contratada_drop,
         status,
     )
@@ -642,21 +571,19 @@ def atualizar_opcoes_filtros_fis(
     return op_servidores, op_contratada
 
 # --------------------------------------------------
-# Callback: limpar filtros (sem tocar em filtro_objeto_texto)
+# Callback: limpar filtros
 # --------------------------------------------------
 @dash.callback(
-    Output("filtro_servidores_texto_fis", "value"),
     Output("filtro_servidores_dropdown_fis", "value"),
     Output("filtro_contrato_texto_fis", "value"),
-    # NÃO inclui filtro_objeto_texto aqui para não duplicar Output
-    Output("filtro_contratada_texto_fis", "value"),
+    Output("filtro_objeto_texto", "value"),
     Output("filtro_contratada_dropdown_fis", "value"),
     Output("filtro_status_fis", "value"),
     Input("btn_limpar_filtros_fis", "n_clicks"),
     prevent_initial_call=True,
 )
 def limpar_filtros_fis(n):
-    return None, None, None, None, None, None
+    return None, None, None, None, None
 
 # --------------------------------------------------
 # PDF – estilos

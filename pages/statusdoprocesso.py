@@ -153,7 +153,7 @@ def carregar_dados_status():
     return tabela_unida
 
 
-df_status = carregar_dados_status()  # [file:24]
+df_status = carregar_dados_status()
 
 # --------------------------------------------------
 # Estilos / layout (Dash)
@@ -578,7 +578,6 @@ def atualizar_tabelas(
     return dados_esquerda, dados_direita, dff_dir.to_dict("records")
 
 # --------------------------------------------------
-# --------------------------------------------------
 # Callback: atualizar opções dos filtros em cascata
 # --------------------------------------------------
 @dash.callback(
@@ -624,6 +623,7 @@ def atualizar_opcoes_filtros_cascata(processo, requisitante, objeto, modalidade)
     ]
 
     return op_processo, op_requisitante, op_objeto, op_modalidade
+
 # --------------------------------------------------
 # Callback: limpar filtros
 # --------------------------------------------------
