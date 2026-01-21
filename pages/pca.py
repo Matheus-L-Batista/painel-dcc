@@ -3,7 +3,7 @@ from dash import html, dcc, dash_table, Input, Output, State
 import pandas as pd
 
 from io import BytesIO
-from reportlab.lib.pagesizes import portrait, A4  # ALTERADO: portrait em vez de landscape
+from reportlab.lib.pagesizes import portrait, A4
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -493,9 +493,9 @@ layout = html.Div(
                             ],
                             data=[],
                             fixed_rows={"headers": True},
-                            row_selectable=False,  # ← ADICIONADO
-                            cell_selectable=False,  # ← ADICIONADO
-                            column_selectable=False,  # ← ADICIONADO
+                            row_selectable=False,
+                            cell_selectable=False,
+                            column_selectable=False,
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
@@ -531,6 +531,10 @@ layout = html.Div(
                                 {
                                     "if": {"filter_query": "{Saldo_num} <= 0"},
                                     "backgroundColor": "#ffcccc",
+                                },
+                                {
+                                    "if": {"filter_query": "{Saldo_num} > 0 && {Saldo_num} < {Planejado_num}"},
+                                    "backgroundColor": "#ccffcc",
                                 },
                             ],
                         ),
@@ -569,9 +573,9 @@ layout = html.Div(
                             ],
                             data=[],
                             fixed_rows={"headers": True},
-                            row_selectable=False,  # ← ADICIONADO
-                            cell_selectable=False,  # ← ADICIONADO
-                            column_selectable=False,  # ← ADICIONADO
+                            row_selectable=False,
+                            cell_selectable=False,
+                            column_selectable=False,
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
@@ -646,7 +650,7 @@ def atualizar_tabelas_pca(
     dff_plan = df_planejamento.copy()
     dff_proc = tabela_processos_unida.copy()
     
-    # FILTRAR FORA DFD "*" ← ADICIONADO
+    # FILTRAR FORA DFD "*"
     dff_plan = dff_plan[dff_plan["DFD"] != "*"]
     dff_proc = dff_proc[dff_proc["DFD"] != "*"]
 
@@ -722,6 +726,7 @@ def atualizar_tabelas_pca(
     )
 
     dff_plan["Saldo_num"] = dff_plan["Saldo"]
+    dff_plan["Planejado_num"] = dff_plan["Planejado"]  # Adicionado para usar na condição
 
     if "Código PDM material" in dff_plan.columns:
         dff_plan["Código PDM material"] = dff_plan["Código PDM material"].apply(
@@ -756,6 +761,7 @@ def atualizar_tabelas_pca(
         "Executado_fmt",
         "Saldo_fmt",
         "Saldo_num",
+        "Planejado_num",  # Adicionado para usar na condição
         "Planejado",
         "Executado",
         "Saldo",
@@ -890,7 +896,7 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         return None
 
     buffer = BytesIO()
-    pagesize = portrait(A4)  # ALTERADO: portrait em vez de landscape
+    pagesize = portrait(A4)
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
@@ -1085,9 +1091,14 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         saldo_col_index = (
             cols_plan.index("Saldo_fmt") if "Saldo_fmt" in cols_plan else None
         )
-        if saldo_col_index is not None:
+        planejado_col_index = (
+            cols_plan.index("Planejado_fmt") if "Planejado_fmt" in cols_plan else None
+        )
+        
+        if saldo_col_index is not None and planejado_col_index is not None:
             for row_idx in range(1, len(table_data_plan)):
                 try:
+                    # Obter valores de saldo e planejado
                     saldo_paragraph = table_data_plan[row_idx][saldo_col_index]
                     saldo_str = getattr(
                         saldo_paragraph, "text", str(saldo_paragraph)
@@ -1101,6 +1112,22 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                     saldo_valor = (
                         float(saldo_str) if saldo_str not in ("", "-") else 0.0
                     )
+                    
+                    planejado_paragraph = table_data_plan[row_idx][planejado_col_index]
+                    planejado_str = getattr(
+                        planejado_paragraph, "text", str(planejado_paragraph)
+                    )
+                    planejado_str = (
+                        planejado_str.replace("R$", "")
+                        .replace(".", "")
+                        .replace(",", ".")
+                        .strip()
+                    )
+                    planejado_valor = (
+                        float(planejado_str) if planejado_str not in ("", "-") else 0.0
+                    )
+                    
+                    # Aplicar cores condicionais
                     if saldo_valor <= 0:
                         style_list_plan.append(
                             (
@@ -1116,6 +1143,23 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                                 (0, row_idx),
                                 (-1, row_idx),
                                 colors.HexColor("#cc0000"),
+                            )
+                        )
+                    elif saldo_valor > 0 and saldo_valor < planejado_valor:
+                        style_list_plan.append(
+                            (
+                                "BACKGROUND",
+                                (0, row_idx),
+                                (-1, row_idx),
+                                colors.HexColor("#ccffcc"),
+                            )
+                        )
+                        style_list_plan.append(
+                            (
+                                "TEXTCOLOR",
+                                (0, row_idx),
+                                (-1, row_idx),
+                                colors.HexColor("#006600"),
                             )
                         )
                 except (ValueError, IndexError):
