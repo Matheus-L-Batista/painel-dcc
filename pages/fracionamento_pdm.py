@@ -1,4 +1,3 @@
-
 import dash
 from dash import html, dcc, dash_table, Input, Output, State, no_update
 
@@ -491,6 +490,7 @@ layout = html.Div(
                         },
                     ],
                     data=[],
+                    page_action='none',  # DESATIVA PAGINAÇÃO - TODAS AS LINHAS EM UMA PÁGINA
                     row_selectable=False,
                     cell_selectable=False,
                     style_table={
