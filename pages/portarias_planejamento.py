@@ -1,6 +1,6 @@
-
 import dash
 from dash import html, dcc, dash_table, Input, Output, State
+from dash.exceptions import PreventUpdate
 import pandas as pd
 
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
@@ -18,10 +18,11 @@ from reportlab.platypus import (
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pytz import timezone
 import os
-
+import threading
+import pickle
 
 # --------------------------------------------------
 # Registro da página
@@ -32,7 +33,6 @@ dash.register_page(
     name="Portarias – Planejamento",
     title="Portarias – Planejamento",
 )
-
 
 # --------------------------------------------------
 # URL da planilha de Portarias
@@ -45,7 +45,6 @@ URL_PORTARIAS = (
 
 # nome EXATO da coluna de link no CSV
 NOME_COL_LINK_ORIGINAL = "Link do documento\nEquipe de Planejamento"
-
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
@@ -117,9 +116,130 @@ def carregar_dados_portarias():
     return df
 
 
-df_portarias_base = carregar_dados_portarias()
-SERVIDORES_UNICOS = getattr(df_portarias_base, "_lista_servidores_unicos", [])
+# --------------------------------------------------
+# Cache (memória + disco) + atualização automática
+# --------------------------------------------------
+CACHE_TTL_MINUTOS = 60  # 1h (padrão)
+_CACHE_LOCK = threading.Lock()
+_DF_CACHE = None
+_DF_CACHE_AT = None
 
+_CACHE_DIR = os.path.join(
+    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
+    ".cache_planejamento"
+)
+os.makedirs(_CACHE_DIR, exist_ok=True)
+_CACHE_FILE = os.path.join(_CACHE_DIR, "df_portarias_planej.pkl")
+_CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
+
+
+def _now_sp():
+    return datetime.now(timezone("America/Sao_Paulo"))
+
+
+def _fmt_dt(dt):
+    if not dt:
+        return "-"
+    try:
+        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _load_disk_cache():
+    try:
+        if not (os.path.exists(_CACHE_FILE) and os.path.exists(_CACHE_META)):
+            return None, None
+        with open(_CACHE_META, "rb") as f:
+            meta = pickle.load(f)
+        cached_at = meta.get("cached_at")
+        if not cached_at:
+            return None, None
+        cached_at_dt = datetime.fromisoformat(cached_at)
+        age = datetime.now() - cached_at_dt
+        if age > timedelta(minutes=CACHE_TTL_MINUTOS):
+            return None, None
+        df = pd.read_pickle(_CACHE_FILE)
+        return df, cached_at_dt
+    except Exception:
+        return None, None
+
+
+def _save_disk_cache(df: pd.DataFrame, cached_at: datetime):
+    try:
+        df.to_pickle(_CACHE_FILE)
+        with open(_CACHE_META, "wb") as f:
+            pickle.dump({"cached_at": cached_at.isoformat()}, f)
+    except Exception:
+        pass
+
+
+def get_df_portarias(force: bool = False):
+    """
+    Retorna (df, status_msg).
+
+    - Cache em memória (mais rápido)
+    - Se memória vazia, tenta cache em disco
+    - Se TTL expirou ou force=True, lê da planilha
+    """
+    global _DF_CACHE, _DF_CACHE_AT
+
+    now_naive = datetime.now()
+    stale = (
+        _DF_CACHE is None
+        or _DF_CACHE_AT is None
+        or (now_naive - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+    )
+
+    if force or stale:
+        with _CACHE_LOCK:
+            now2 = datetime.now()
+            stale2 = (
+                _DF_CACHE is None
+                or _DF_CACHE_AT is None
+                or (now2 - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+            )
+
+            if (not force) and stale2:
+                df_disk, at_disk = _load_disk_cache()
+                if df_disk is not None and at_disk is not None:
+                    _DF_CACHE = df_disk
+                    _DF_CACHE_AT = now2
+                    return _DF_CACHE, f"Dados carregados do cache em disco ({_fmt_dt(at_disk)})."
+
+            if force or stale2:
+                df = carregar_dados_portarias()
+                _DF_CACHE = df
+                _DF_CACHE_AT = now2
+                _save_disk_cache(df, now2)
+                return _DF_CACHE, f"Dados recarregados da planilha ({_fmt_dt(_now_sp())})."
+
+    return _DF_CACHE, f"Dados em cache (memória) — verificado em {_fmt_dt(_now_sp())}."
+
+
+def _opcoes_dropdown(dff: pd.DataFrame, col: str):
+    if dff is None or dff.empty or col not in dff.columns:
+        return []
+    return [
+        {"label": str(v), "value": str(v)}
+        for v in sorted(dff[col].dropna().unique())
+        if str(v).strip() != ""
+    ]
+
+
+def _servidores_unicos_do_subset(dff: pd.DataFrame):
+    if dff is None or dff.empty:
+        return []
+    cols_serv = [str(i) for i in range(1, 16) if str(i) in dff.columns]
+    if not cols_serv:
+        return []
+    todos_serv = pd.Series(dff[cols_serv].values.ravel("K"), dtype="object")
+    return sorted([s for s in todos_serv.unique() if isinstance(s, str) and s.strip() != ""])
+
+
+# --------------------------------------------------
+# Estilos
+# --------------------------------------------------
 dropdown_style = {
     "color": "black",
     "width": "100%",
@@ -127,9 +247,7 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
-# --------------------------------------------------
 # Estilo unificado dos botões (fundo azul, texto branco)
-# --------------------------------------------------
 botao_style = {
     "backgroundColor": "#0b2b57",
     "color": "white",
@@ -142,12 +260,12 @@ botao_style = {
     "marginRight": "6px",
 }
 
-
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
 layout = html.Div(
     children=[
+        dcc.Location(id="url"),
         html.Div(
             id="barra_filtros_port_planej",
             className="filtros-sticky",
@@ -218,11 +336,17 @@ layout = html.Div(
                     ],
                 ),
                 html.Div(
-                    style={"marginTop": "4px"},
+                    style={"marginTop": "4px", "display": "flex", "flexWrap": "wrap", "gap": "10px", "alignItems": "center"},
                     children=[
                         html.Button(
                             "Limpar filtros",
                             id="btn_limpar_filtros_port_planej",
+                            n_clicks=0,
+                            style=botao_style,
+                        ),
+                        html.Button(
+                            "Atualizar Dados",
+                            id="btn_reload_port_planej",
                             n_clicks=0,
                             style=botao_style,
                         ),
@@ -233,6 +357,10 @@ layout = html.Div(
                             style=botao_style,
                         ),
                         dcc.Download(id="download_relatorio_port_planej"),
+                        html.Div(
+                            id="info-atualizacao-port-planej",
+                            style={"fontSize": "12px", "color": "#333"},
+                        ),
                     ],
                 ),
             ],
@@ -263,11 +391,7 @@ layout = html.Div(
                 {"name": "Setor de Origem", "id": "Setor de Origem"},
                 {"name": "Servidores", "id": "Servidores"},
                 {"name": "TIPO", "id": "TIPO"},
-                {
-                    "name": "Link",
-                    "id": "Link_markdown",
-                    "presentation": "markdown",
-                },
+                {"name": "Link", "id": "Link_markdown", "presentation": "markdown"},
             ],
             data=[],
             row_selectable=False,
@@ -275,7 +399,7 @@ layout = html.Div(
             style_table={
                 "overflowX": "auto",
                 "overflowY": "auto",
-                "height": "calc(100vh - 200px)",
+                "height": "calc(100vh - 220px)",
                 "minHeight": "300px",
                 "position": "relative",
             },
@@ -296,32 +420,48 @@ layout = html.Div(
                 "top": 0,
                 "zIndex": 5,
             },
-            style_data={
-                "color": "black",
-                "backgroundColor": "white",
-            },
+            style_data={"color": "black", "backgroundColor": "white"},
             style_data_conditional=[
-                {
-                    "if": {"row_index": "odd"},
-                    "backgroundColor": "rgb(240, 240, 240)",
-                },
+                {"if": {"row_index": "odd"}, "backgroundColor": "rgb(240, 240, 240)"},
             ],
             style_cell_conditional=[
-                {
-                    "if": {"column_id": "Link_markdown"},
-                    "textAlign": "center",
-                },
+                {"if": {"column_id": "Link_markdown"}, "textAlign": "center"},
             ],
-            css=[
-                dict(
-                    selector="p",
-                    rule="margin: 0; text-align: center;",
-                ),
-            ],
+            css=[dict(selector="p", rule="margin: 0; text-align: center;")],
         ),
+        dcc.Store(id="store-reload-port-planej"),
+        dcc.Interval(id="interval-reload-port-planej", interval=60 * 60 * 1000, n_intervals=0),  # 1h
         dcc.Store(id="store_dados_port_planej"),
     ]
 )
+
+# --------------------------------------------------
+# Callback: abrir página / interval / botão (recarrega cache + popula opções)
+# --------------------------------------------------
+@dash.callback(
+    Output("store-reload-port-planej", "data"),
+    Output("info-atualizacao-port-planej", "children"),
+    Output("filtro_setor_dropdown_planej", "options"),
+    Output("filtro_servidor_dropdown_planej", "options"),
+    Output("filtro_tipo_planej", "options"),
+    Input("url", "pathname"),
+    Input("interval-reload-port-planej", "n_intervals"),
+    Input("btn_reload_port_planej", "n_clicks"),
+)
+def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks):
+    if pathname != "/portarias_planejamento":
+        raise PreventUpdate
+
+    force = bool(n_clicks) and n_clicks > 0
+    df, status = get_df_portarias(force=force)
+
+    # opções base (sem filtros)
+    op_setor = _opcoes_dropdown(df, "Setor de Origem")
+    op_servidor = [{"label": s, "value": s} for s in _servidores_unicos_do_subset(df)]
+    op_tipo = _opcoes_dropdown(df, "TIPO")
+
+    msg = html.Div([html.B("Dados disponíveis. "), html.Span(status)])
+    return {"ts": datetime.now().isoformat()}, msg, op_setor, op_servidor, op_tipo
 
 
 # --------------------------------------------------
@@ -330,22 +470,22 @@ layout = html.Div(
 @dash.callback(
     Output("tabela_portarias_planej", "data"),
     Output("store_dados_port_planej", "data"),
+    Input("store-reload-port-planej", "data"),
     Input("filtro_numero_ano_planej", "value"),
     Input("filtro_setor_dropdown_planej", "value"),
     Input("filtro_servidor_dropdown_planej", "value"),
     Input("filtro_tipo_planej", "value"),
 )
-def atualizar_tabela_portarias_planej(
-    numero_ano_texto,
-    setor_drop,
-    servidor_drop,
-    tipo_sel,
-):
+def atualizar_tabela_portarias_planej(_reload, numero_ano_texto, setor_drop, servidor_drop, tipo_sel):
     """
-    Aplica todos os filtros em um único dataframe base (df_portarias_base),
+    Aplica todos os filtros em um único dataframe base (cache),
     usando uma máscara booleana combinada. A ordem dos filtros não importa.
     """
-    dff = df_portarias_base.copy()
+    df_base, _ = get_df_portarias(force=False)
+    dff = df_base.copy() if df_base is not None else pd.DataFrame()
+
+    if dff.empty:
+        return [], []
 
     mask = pd.Series(True, index=dff.index)
 
@@ -394,9 +534,7 @@ def atualizar_tabela_portarias_planej(
             return f"[Link]({url.strip()})"
         return ""
 
-    dff_display["Link_markdown"] = dff_display[NOME_COL_LINK_ORIGINAL].apply(
-        formatar_link
-    )
+    dff_display["Link_markdown"] = dff_display[NOME_COL_LINK_ORIGINAL].apply(formatar_link)
 
     cols_tabela = [
         "Data",
@@ -407,6 +545,10 @@ def atualizar_tabela_portarias_planej(
         "Link_markdown",
     ]
 
+    for c in cols_tabela:
+        if c not in dff_display.columns:
+            dff_display[c] = ""
+
     return dff_display[cols_tabela].to_dict("records"), dff.to_dict("records")
 
 
@@ -414,26 +556,26 @@ def atualizar_tabela_portarias_planej(
 # Callback: filtros em cascata (ordem-invariante)
 # --------------------------------------------------
 @dash.callback(
-    Output("filtro_setor_dropdown_planej", "options"),
-    Output("filtro_servidor_dropdown_planej", "options"),
-    Output("filtro_tipo_planej", "options"),
+    Output("filtro_setor_dropdown_planej", "options", allow_duplicate=True),
+    Output("filtro_servidor_dropdown_planej", "options", allow_duplicate=True),
+    Output("filtro_tipo_planej", "options", allow_duplicate=True),
+    Input("store-reload-port-planej", "data"),
     Input("filtro_numero_ano_planej", "value"),
     Input("filtro_setor_dropdown_planej", "value"),
     Input("filtro_servidor_dropdown_planej", "value"),
     Input("filtro_tipo_planej", "value"),
+    prevent_initial_call=True,
 )
-def atualizar_opcoes_filtros_portarias(
-    numero_ano_texto,
-    setor_drop,
-    servidor_drop,
-    tipo_sel,
-):
+def atualizar_opcoes_filtros_portarias(_reload, numero_ano_texto, setor_drop, servidor_drop, tipo_sel):
     """
-    Atualiza as opções de Setor, Servidores (dropdown) e Tipo
-    em cascata, usando um único filtro global. A ordem dos filtros
-    não importa.
+    Atualiza as opções de Setor, Servidores e Tipo em cascata,
+    usando um único filtro global. A ordem dos filtros não importa.
     """
-    dff = df_portarias_base.copy()
+    df_base, _ = get_df_portarias(force=False)
+    dff = df_base.copy() if df_base is not None else pd.DataFrame()
+
+    if dff.empty:
+        return [], [], []
 
     mask = pd.Series(True, index=dff.index)
 
@@ -467,39 +609,9 @@ def atualizar_opcoes_filtros_portarias(
 
     dff = dff[mask].copy()
 
-    # Opções de Setor de Origem
-    op_setor = [
-        {"label": s, "value": s}
-        for s in sorted(dff["Setor de Origem"].dropna().unique())
-        if str(s).strip() != ""
-    ]
-
-    # Opções de Servidores (lista única a partir do subconjunto filtrado)
-    cols_serv = [str(i) for i in range(1, 16) if str(i) in dff.columns]
-    if cols_serv:
-        todos_serv = pd.Series(dff[cols_serv].values.ravel("K"), dtype="object")
-        servidores_unicos_filtrados = sorted(
-            [
-                s
-                for s in todos_serv.unique()
-                if isinstance(s, str) and s.strip() != ""
-            ]
-        )
-    else:
-        servidores_unicos_filtrados = []
-
-    op_servidor = [
-        {"label": s, "value": s}
-        for s in servidores_unicos_filtrados
-    ]
-
-    # Opções de Tipo
-    op_tipo = [
-        {"label": t, "value": t}
-        for t in sorted(
-            [t for t in dff["TIPO"].dropna().unique() if str(t).strip() != ""]
-        )
-    ]
+    op_setor = _opcoes_dropdown(dff, "Setor de Origem")
+    op_servidor = [{"label": s, "value": s} for s in _servidores_unicos_do_subset(dff)]
+    op_tipo = _opcoes_dropdown(dff, "TIPO")
 
     return op_setor, op_servidor, op_tipo
 
@@ -515,7 +627,7 @@ def atualizar_opcoes_filtros_portarias(
     Input("btn_limpar_filtros_port_planej", "n_clicks"),
     prevent_initial_call=True,
 )
-def limpar_filtros_port_planej(n):
+def limpar_filtros_port_planej(_n):
     return None, None, None, None
 
 
@@ -549,7 +661,7 @@ def wrap_header(text):
 
 
 # --------------------------------------------------
-# Callback: gerar PDF (layout igual ao de contratos)
+# Callback: gerar PDF
 # --------------------------------------------------
 @dash.callback(
     Output("download_relatorio_port_planej", "data"),
@@ -577,9 +689,7 @@ def gerar_pdf_port_planej(n, dados_port):
     styles = getSampleStyleSheet()
     story = []
 
-    # --------------------------------------------------
     # Data / Hora (topo direito)
-    # --------------------------------------------------
     tz_brasilia = timezone("America/Sao_Paulo")
     data_hora = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
 
@@ -599,9 +709,7 @@ def gerar_pdf_port_planej(n, dados_port):
     )
     story.append(Spacer(1, 0.15 * inch))
 
-    # --------------------------------------------------
     # Cabeçalho: Logo esq | Instituição | Logo dir
-    # --------------------------------------------------
     logo_esq = (
         Image("assets/brasaobrasil.png", 1.2 * inch, 1.2 * inch)
         if os.path.exists("assets/brasaobrasil.png") else ""
@@ -629,11 +737,7 @@ def gerar_pdf_port_planej(n, dados_port):
 
     cabecalho = Table(
         [[logo_esq, instituicao, logo_dir]],
-        colWidths=[
-            1.4 * inch,
-            4.2 * inch,
-            1.4 * inch,
-        ],
+        colWidths=[1.4 * inch, 4.2 * inch, 1.4 * inch],
     )
 
     cabecalho.setStyle(
@@ -648,9 +752,7 @@ def gerar_pdf_port_planej(n, dados_port):
     story.append(cabecalho)
     story.append(Spacer(1, 0.25 * inch))
 
-    # --------------------------------------------------
     # Título
-    # --------------------------------------------------
     titulo = Paragraph(
         "Portarias vigentes – Equipes de Planejamento da Contratação (inclusive TI)<br/>",
         ParagraphStyle(
@@ -664,22 +766,11 @@ def gerar_pdf_port_planej(n, dados_port):
 
     story.append(titulo)
     story.append(Spacer(1, 0.2 * inch))
-
-    story.append(
-        Paragraph(f"Total de registros: {len(df)}", styles["Normal"])
-    )
+    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
     story.append(Spacer(1, 0.15 * inch))
 
-    # --------------------------------------------------
     # Preparação da tabela de dados
-    # --------------------------------------------------
-    cols = [
-        "Data",
-        "N°/ANO da Portaria",
-        "Setor de Origem",
-        "Servidores",
-        "TIPO",
-    ]
+    cols = ["Data", "N°/ANO da Portaria", "Setor de Origem", "Servidores", "TIPO"]
 
     for c in cols:
         if c not in df.columns:
@@ -689,38 +780,32 @@ def gerar_pdf_port_planej(n, dados_port):
 
     header = [wrap_header(c) for c in cols]
     table_data = [header]
-
     for _, row in df_pdf[cols].iterrows():
         table_data.append([wrap_data(row[c]) for c in cols])
 
-    # --------------------------------------------------
     # Larguras das colunas (ajustadas para landscape)
-    # --------------------------------------------------
     page_width = pagesize[0] - 0.6 * inch
     col_widths = [
         0.9 * inch,               # Data
         1.2 * inch,               # N°/ANO da Portaria
-        1.2 * inch,               # Setor de Origem (REDUZIDA de 1.6 para 1.2)
+        1.2 * inch,               # Setor de Origem
         3.0 * inch,               # Servidores
-        page_width - (0.9 + 1.2 + 1.2 + 3.0) * inch,  # TIPO (AUMENTADA: restante)
+        page_width - (0.9 + 1.2 + 1.2 + 3.0) * inch,  # TIPO
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
 
     table_styles = [
-        # Header
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
-        # Padding
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        # Zebra
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
     ]
 
@@ -732,5 +817,5 @@ def gerar_pdf_port_planej(n, dados_port):
 
     return dcc.send_bytes(
         buffer.getvalue(),
-          f"relatorio_portarias_planejamento_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf",
+        f"relatorio_portarias_planejamento_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf",
     )

@@ -1,7 +1,8 @@
 import dash
 from dash import html, dcc, dash_table, Input, Output, State
+from dash.exceptions import PreventUpdate
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -18,6 +19,8 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib import colors
 from pytz import timezone
 import os
+import threading
+import pickle
 
 # --------------------------------------------------
 # Registro da página
@@ -64,6 +67,9 @@ def carregar_dados_fiscais():
         COL_FINAL_VIG,
         COL_LINK_COMPRASNET,
     ] + col_servidores_raw
+
+    # mantém apenas as colunas existentes (proteção)
+    cols_keep = [c for c in cols_keep if c in df.columns]
     df = df[cols_keep]
 
     df = df.rename(
@@ -79,9 +85,7 @@ def carregar_dados_fiscais():
 
     # Lista de servidores únicos (sem vazios) para o dropdown
     if col_servidores_raw:
-        todos_serv = pd.Series(
-            df[col_servidores_raw].values.ravel("K"), dtype="object"
-        )
+        todos_serv = pd.Series(df[col_servidores_raw].values.ravel("K"), dtype="object")
         servidores_unicos = sorted(
             s.strip()
             for s in todos_serv.unique()
@@ -110,10 +114,7 @@ def carregar_dados_fiscais():
         df["Servidores"] = ""
 
     # Conversão e status pela Final da Vigência
-    df["Final da Vigência"] = pd.to_datetime(
-        df["Final da Vigência"], dayfirst=True, errors="coerce"
-    )
-
+    df["Final da Vigência"] = pd.to_datetime(df["Final da Vigência"], dayfirst=True, errors="coerce")
     hoje = datetime.now().date()
 
     def calcular_status(data_final):
@@ -129,9 +130,10 @@ def carregar_dados_fiscais():
     df["Status"] = df["Final da Vigência"].apply(calcular_status)
 
     # Formata datas para exibição
-    df["Final da Vigência"] = df["Final da Vigência"].dt.strftime(
-        "%d/%m/%Y"
-    ).fillna("")
+    df["Final da Vigência"] = df["Final da Vigência"].dt.strftime("%d/%m/%Y").fillna("")
+
+    # remove linhas sem texto em Status
+    df = df[df["Status"].astype(str).str.strip() != ""]
 
     # guarda a lista de servidores únicos
     df._lista_servidores_unicos = servidores_unicos
@@ -139,11 +141,112 @@ def carregar_dados_fiscais():
     return df
 
 
-df_fiscais_base = carregar_dados_fiscais()
-SERVIDORES_UNICOS_FIS = getattr(
-    df_fiscais_base, "_lista_servidores_unicos", []
-)
+# --------------------------------------------------
+# Cache (memória + disco) + atualização automática
+# --------------------------------------------------
+CACHE_TTL_MINUTOS = 60  # 1h
+_CACHE_LOCK = threading.Lock()
+_DF_CACHE = None
+_DF_CACHE_AT = None
 
+_CACHE_DIR = os.path.join(
+    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
+    ".cache_fiscais",
+)
+os.makedirs(_CACHE_DIR, exist_ok=True)
+_CACHE_FILE = os.path.join(_CACHE_DIR, "df_fiscais.pkl")
+_CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
+
+
+def _now_sp():
+    return datetime.now(timezone("America/Sao_Paulo"))
+
+
+def _fmt_dt(dt):
+    if not dt:
+        return "-"
+    try:
+        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _load_disk_cache():
+    try:
+        if not (os.path.exists(_CACHE_FILE) and os.path.exists(_CACHE_META)):
+            return None, None
+        with open(_CACHE_META, "rb") as f:
+            meta = pickle.load(f)
+        cached_at = meta.get("cached_at")
+        if not cached_at:
+            return None, None
+        cached_at_dt = datetime.fromisoformat(cached_at)
+        age = datetime.now() - cached_at_dt
+        if age > timedelta(minutes=CACHE_TTL_MINUTOS):
+            return None, None
+        df = pd.read_pickle(_CACHE_FILE)
+        return df, cached_at_dt
+    except Exception:
+        return None, None
+
+
+def _save_disk_cache(df: pd.DataFrame, cached_at: datetime):
+    try:
+        df.to_pickle(_CACHE_FILE)
+        with open(_CACHE_META, "wb") as f:
+            pickle.dump({"cached_at": cached_at.isoformat()}, f)
+    except Exception:
+        pass
+
+
+def get_df_fiscais(force: bool = False):
+    """
+    Retorna (df, status_msg, servidores_unicos)
+    - Cache em memória (rápido)
+    - Se memória vazia, tenta cache em disco
+    - Se TTL expirou ou force=True, lê da planilha
+    """
+    global _DF_CACHE, _DF_CACHE_AT
+
+    now_naive = datetime.now()
+    stale = (
+        _DF_CACHE is None
+        or _DF_CACHE_AT is None
+        or (now_naive - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+    )
+
+    if force or stale:
+        with _CACHE_LOCK:
+            now2 = datetime.now()
+            stale2 = (
+                _DF_CACHE is None
+                or _DF_CACHE_AT is None
+                or (now2 - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+            )
+
+            if (not force) and stale2:
+                df_disk, at_disk = _load_disk_cache()
+                if df_disk is not None and at_disk is not None:
+                    _DF_CACHE = df_disk
+                    _DF_CACHE_AT = now2
+                    serv = getattr(_DF_CACHE, "_lista_servidores_unicos", [])
+                    return _DF_CACHE, f"Dados carregados do cache em disco ({_fmt_dt(at_disk)}).", serv
+
+            if force or stale2:
+                df = carregar_dados_fiscais()
+                _DF_CACHE = df
+                _DF_CACHE_AT = now2
+                _save_disk_cache(df, now2)
+                serv = getattr(_DF_CACHE, "_lista_servidores_unicos", [])
+                return _DF_CACHE, f"Dados recarregados da planilha ({_fmt_dt(_now_sp())}).", serv
+
+    serv = getattr(_DF_CACHE, "_lista_servidores_unicos", []) if _DF_CACHE is not None else []
+    return _DF_CACHE, f"Dados em cache (memória) — verificado em {_fmt_dt(_now_sp())}.", serv
+
+
+# --------------------------------------------------
+# Estilos
+# --------------------------------------------------
 dropdown_style = {
     "color": "black",
     "width": "100%",
@@ -151,9 +254,6 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
-# --------------------------------------------------
-# Estilo dos botões
-# --------------------------------------------------
 botao_style = {
     "backgroundColor": "#0b2b57",
     "color": "white",
@@ -166,47 +266,27 @@ botao_style = {
     "marginRight": "6px",
 }
 
+
 # --------------------------------------------------
 # Função auxiliar: filtros
 # --------------------------------------------------
-def filtrar_fiscais(
-    servidores_drop,
-    contrato_texto,
-    objeto_texto,
-    contratada_drop,
-    status,
-):
-    dff = df_fiscais_base.copy()
+def filtrar_fiscais(df_base, servidores_drop, contrato_texto, objeto_texto, contratada_drop, status):
+    dff = df_base.copy()
 
     # Servidores (dropdown)
     if servidores_drop:
         termo = str(servidores_drop).strip().lower()
-        dff = dff[
-            dff["Servidores"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
+        dff = dff[dff["Servidores"].astype(str).str.lower().str.contains(termo, na=False)]
 
     # Contrato (texto)
     if contrato_texto and str(contrato_texto).strip():
         termo = str(contrato_texto).strip().lower()
-        dff = dff[
-            dff["Contrato"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
+        dff = dff[dff["Contrato"].astype(str).str.lower().str.contains(termo, na=False)]
 
     # Objeto (texto)
     if objeto_texto and str(objeto_texto).strip():
         termo = str(objeto_texto).strip().lower()
-        dff = dff[
-            dff["Objeto"]
-            .astype(str)
-            .str.lower()
-            .str.contains(termo, na=False)
-        ]
+        dff = dff[dff["Objeto"].astype(str).str.lower().str.contains(termo, na=False)]
 
     # Contratada (dropdown)
     if contratada_drop:
@@ -220,20 +300,18 @@ def filtrar_fiscais(
     dff = dff[dff["Status"].astype(str).str.strip() != ""]
 
     # Ordena por Final da Vigência (mais recente em cima)
-    dff["_fim_vig_dt"] = pd.to_datetime(
-        dff["Final da Vigência"], dayfirst=True, errors="coerce"
-    )
-    dff = dff.sort_values("_fim_vig_dt", ascending=False).drop(
-        columns=["_fim_vig_dt"]
-    )
+    dff["_fim_vig_dt"] = pd.to_datetime(dff["Final da Vigência"], dayfirst=True, errors="coerce")
+    dff = dff.sort_values("_fim_vig_dt", ascending=False).drop(columns=["_fim_vig_dt"])
 
     return dff
+
 
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
 layout = html.Div(
     children=[
+        dcc.Location(id="url"),
         html.Div(
             id="barra_filtros_fiscais",
             className="filtros-sticky",
@@ -247,17 +325,13 @@ layout = html.Div(
                         "alignItems": "flex-start",
                     },
                     children=[
-                        # Servidores (dropdown)
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
                                 html.Label("Servidores"),
                                 dcc.Dropdown(
                                     id="filtro_servidores_dropdown_fis",
-                                    options=[
-                                        {"label": s, "value": s}
-                                        for s in SERVIDORES_UNICOS_FIS
-                                    ],
+                                    options=[],
                                     value=None,
                                     placeholder="Selecione um servidor...",
                                     clearable=True,
@@ -266,7 +340,6 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Contrato (digitação)
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
@@ -275,14 +348,10 @@ layout = html.Div(
                                     id="filtro_contrato_texto_fis",
                                     type="text",
                                     placeholder="Digite parte do contrato",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
+                                    style={"width": "100%", "marginBottom": "6px"},
                                 ),
                             ],
                         ),
-                        # Objeto (digitação)
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
@@ -291,10 +360,7 @@ layout = html.Div(
                                     id="filtro_objeto_texto",
                                     type="text",
                                     placeholder="Digite parte do objeto",
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "6px",
-                                    },
+                                    style={"width": "100%", "marginBottom": "6px"},
                                 ),
                             ],
                         ),
@@ -310,22 +376,13 @@ layout = html.Div(
                         "marginTop": "4px",
                     },
                     children=[
-                        # Contratada (dropdown)
                         html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
                                 html.Label("Contratada"),
                                 dcc.Dropdown(
                                     id="filtro_contratada_dropdown_fis",
-                                    options=[
-                                        {"label": e, "value": e}
-                                        for e in sorted(
-                                            df_fiscais_base["Contratada"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(e).strip() != ""
-                                    ],
+                                    options=[],
                                     value=None,
                                     placeholder="Selecione uma contratada...",
                                     clearable=True,
@@ -334,7 +391,6 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Status
                         html.Div(
                             style={"minWidth": "200px", "flex": "0 0 220px"},
                             children=[
@@ -342,18 +398,9 @@ layout = html.Div(
                                 dcc.Dropdown(
                                     id="filtro_status_fis",
                                     options=[
-                                        {
-                                            "label": "Vigente",
-                                            "value": "Vigente",
-                                        },
-                                        {
-                                            "label": "Próximo do Vencimento",
-                                            "value": "Próximo do Vencimento",
-                                        },
-                                        {
-                                            "label": "Vencido",
-                                            "value": "Vencido",
-                                        },
+                                        {"label": "Vigente", "value": "Vigente"},
+                                        {"label": "Próximo do Vencimento", "value": "Próximo do Vencimento"},
+                                        {"label": "Vencido", "value": "Vencido"},
                                     ],
                                     value=None,
                                     placeholder="Todos os status",
@@ -362,17 +409,18 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Botões
                         html.Div(
-                            style={
-                                "display": "flex",
-                                "gap": "10px",
-                                "flexShrink": 0,
-                            },
+                            style={"display": "flex", "gap": "10px", "flexShrink": 0, "flexWrap": "wrap"},
                             children=[
                                 html.Button(
                                     "Limpar filtros",
                                     id="btn_limpar_filtros_fis",
+                                    n_clicks=0,
+                                    style=botao_style,
+                                ),
+                                html.Button(
+                                    "Atualizar Dados",
+                                    id="btn_reload_fiscais",
                                     n_clicks=0,
                                     style=botao_style,
                                 ),
@@ -382,8 +430,10 @@ layout = html.Div(
                                     n_clicks=0,
                                     style=botao_style,
                                 ),
-                                dcc.Download(
-                                    id="download_relatorio_fis"
+                                dcc.Download(id="download_relatorio_fis"),
+                                html.Div(
+                                    id="info-atualizacao-fiscais",
+                                    style={"fontSize": "12px", "color": "#333"},
                                 ),
                             ],
                         ),
@@ -394,11 +444,7 @@ layout = html.Div(
         dash_table.DataTable(
             id="tabela_fiscais",
             columns=[
-                {
-                    "name": "Contrato",
-                    "id": "Contrato_markdown",
-                    "presentation": "markdown",
-                },
+                {"name": "Contrato", "id": "Contrato_markdown", "presentation": "markdown"},
                 {"name": "Setor", "id": "Setor"},
                 {"name": "Objeto", "id": "Objeto"},
                 {"name": "Contratada", "id": "Contratada"},
@@ -412,7 +458,7 @@ layout = html.Div(
             style_table={
                 "overflowX": "auto",
                 "overflowY": "auto",
-                "height": "calc(100vh - 200px)",
+                "height": "calc(100vh - 220px)",
                 "minHeight": "300px",
                 "position": "relative",
             },
@@ -434,82 +480,86 @@ layout = html.Div(
                 "zIndex": 5,
             },
             style_cell_conditional=[
-                {
-                    "if": {"column_id": "Contrato_markdown"},
-                    "textAlign": "center",
-                },
+                {"if": {"column_id": "Contrato_markdown"}, "textAlign": "center"},
             ],
             style_data_conditional=[
-                {
-                    "if": {"row_index": "odd"},
-                    "backgroundColor": "#f0f0f0",
-                },
-                {
-                    "if": {"row_index": "even"},
-                    "backgroundColor": "white",
-                },
-                {
-                    "if": {"filter_query": '{Status} = "Vencido"'},
-                    "backgroundColor": "#ffcccc",
-                    "color": "black",
-                },
-                {
-                    "if": {
-                        "filter_query": '{Status} = "Próximo do Vencimento"'
-                    },
-                    "backgroundColor": "#ffffcc",
-                    "color": "black",
-                },
+                {"if": {"row_index": "odd"}, "backgroundColor": "#f0f0f0"},
+                {"if": {"row_index": "even"}, "backgroundColor": "white"},
+                {"if": {"filter_query": '{Status} = "Vencido"'}, "backgroundColor": "#ffcccc", "color": "black"},
+                {"if": {"filter_query": '{Status} = "Próximo do Vencimento"'}, "backgroundColor": "#ffffcc", "color": "black"},
             ],
-            css=[
-                {
-                    "selector": "p",
-                    "rule": "margin: 0; text-align: center;",
-                },
-            ],
+            css=[{"selector": "p", "rule": "margin: 0; text-align: center;"}],
         ),
         dcc.Store(id="store_dados_fis"),
+        dcc.Store(id="store-reload-fiscais"),
+        dcc.Interval(id="interval-reload-fiscais", interval=60 * 60 * 1000, n_intervals=0),  # 1h
     ],
 )
 
 # --------------------------------------------------
-# Callback: filtros (tabela + store)
+# Callback: abrir página / interval / botão (recarrega cache + popula opções base)
+# --------------------------------------------------
+@dash.callback(
+    Output("store-reload-fiscais", "data"),
+    Output("info-atualizacao-fiscais", "children"),
+    Output("filtro_servidores_dropdown_fis", "options"),
+    Output("filtro_contratada_dropdown_fis", "options"),
+    Input("url", "pathname"),
+    Input("interval-reload-fiscais", "n_intervals"),
+    Input("btn_reload_fiscais", "n_clicks"),
+)
+def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks):
+    if pathname != "/fiscais":
+        raise PreventUpdate
+
+    force = bool(n_clicks) and n_clicks > 0
+    df, status_msg, serv_unicos = get_df_fiscais(force=force)
+
+    op_servidores = [{"label": s, "value": s} for s in (serv_unicos or [])]
+
+    op_contratada = []
+    if df is not None and not df.empty and "Contratada" in df.columns:
+        op_contratada = [
+            {"label": e, "value": e}
+            for e in sorted(df["Contratada"].dropna().unique())
+            if str(e).strip()
+        ]
+
+    msg = html.Div([html.B("Dados disponíveis. "), html.Span(status_msg)])
+    return {"ts": datetime.now().isoformat()}, msg, op_servidores, op_contratada
+
+
+# --------------------------------------------------
+# Callback: tabela (filtros) - reage ao reload também
 # --------------------------------------------------
 @dash.callback(
     Output("tabela_fiscais", "data"),
     Output("store_dados_fis", "data"),
+    Input("store-reload-fiscais", "data"),
     Input("filtro_servidores_dropdown_fis", "value"),
     Input("filtro_contrato_texto_fis", "value"),
     Input("filtro_objeto_texto", "value"),
     Input("filtro_contratada_dropdown_fis", "value"),
     Input("filtro_status_fis", "value"),
 )
-def atualizar_tabela_fiscais(
-    servidores_drop,
-    contrato_texto,
-    objeto_texto,
-    contratada_drop,
-    status,
-):
-    dff = filtrar_fiscais(
-        servidores_drop,
-        contrato_texto,
-        objeto_texto,
-        contratada_drop,
-        status,
-    )
+def atualizar_tabela_fiscais(_reload, servidores_drop, contrato_texto, objeto_texto, contratada_drop, status):
+    df_base, _, _ = get_df_fiscais(force=False)
+    if df_base is None or df_base.empty:
+        return [], []
 
-    dff = dff.copy()
+    dff = filtrar_fiscais(df_base, servidores_drop, contrato_texto, objeto_texto, contratada_drop, status).copy()
 
     def mk_link(row):
         url = row.get("Link Comprasnet")
         contrato = row.get("Contrato")
-        if isinstance(url, str) and url.strip() and isinstance(contrato, str):
-            return f"[{contrato}]({url.strip()})"
+        if isinstance(url, str) and url.strip() and isinstance(contrato, str) and contrato.strip():
+            u = url.strip()
+            if u.startswith(("http://", "https://")):
+                return f"[{contrato.strip()}]({u})"
         return ""
 
     dff["Contrato_markdown"] = dff.apply(mk_link, axis=1)
-    dff = dff[dff["Contrato_markdown"].str.strip() != ""]
+    dff = dff[dff["Contrato_markdown"].astype(str).str.strip() != ""]
 
     cols = [
         "Contrato_markdown",
@@ -524,34 +574,29 @@ def atualizar_tabela_fiscais(
 
     return dff[cols].to_dict("records"), dff.to_dict("records")
 
+
 # --------------------------------------------------
-# Callback: opções dos filtros (cascata)
+# Callback: opções dos filtros (cascata) - usa o DF filtrado
 # --------------------------------------------------
 @dash.callback(
-    Output("filtro_servidores_dropdown_fis", "options"),
-    Output("filtro_contratada_dropdown_fis", "options"),
+    Output("filtro_servidores_dropdown_fis", "options", allow_duplicate=True),
+    Output("filtro_contratada_dropdown_fis", "options", allow_duplicate=True),
+    Input("store-reload-fiscais", "data"),
     Input("filtro_servidores_dropdown_fis", "value"),
     Input("filtro_contrato_texto_fis", "value"),
     Input("filtro_objeto_texto", "value"),
     Input("filtro_contratada_dropdown_fis", "value"),
     Input("filtro_status_fis", "value"),
+    prevent_initial_call=True,
 )
-def atualizar_opcoes_filtros_fis(
-    servidores_drop,
-    contrato_texto,
-    objeto_texto,
-    contratada_drop,
-    status,
-):
-    dff = filtrar_fiscais(
-        servidores_drop,
-        contrato_texto,
-        objeto_texto,
-        contratada_drop,
-        status,
-    )
+def atualizar_opcoes_filtros_fis(_reload, servidores_drop, contrato_texto, objeto_texto, contratada_drop, status):
+    df_base, _, serv_unicos = get_df_fiscais(force=False)
+    if df_base is None or df_base.empty:
+        return [], []
 
-    # Servidores: extrai únicos da coluna agregada "Servidores"
+    dff = filtrar_fiscais(df_base, servidores_drop, contrato_texto, objeto_texto, contratada_drop, status)
+
+    # Servidores: extrai únicos da coluna agregada "Servidores" (melhor do que a lista base, porque acompanha o filtro)
     servidores_list = []
     for serv_str in dff["Servidores"].unique():
         if isinstance(serv_str, str) and serv_str.strip():
@@ -560,7 +605,10 @@ def atualizar_opcoes_filtros_fis(
                 if s and s not in servidores_list:
                     servidores_list.append(s)
     servidores_list.sort()
-    op_servidores = [{"label": s, "value": s} for s in servidores_list]
+
+    # fallback: se não conseguir extrair nada (ex.: filtro muito restrito), usa lista base
+    base = servidores_list if servidores_list else (serv_unicos or [])
+    op_servidores = [{"label": s, "value": s} for s in base]
 
     op_contratada = [
         {"label": e, "value": e}
@@ -569,6 +617,7 @@ def atualizar_opcoes_filtros_fis(
     ]
 
     return op_servidores, op_contratada
+
 
 # --------------------------------------------------
 # Callback: limpar filtros
@@ -582,8 +631,9 @@ def atualizar_opcoes_filtros_fis(
     Input("btn_limpar_filtros_fis", "n_clicks"),
     prevent_initial_call=True,
 )
-def limpar_filtros_fis(n):
+def limpar_filtros_fis(_n):
     return None, None, None, None, None
+
 
 # --------------------------------------------------
 # PDF – estilos
@@ -612,6 +662,7 @@ def wrap_data(text):
 def wrap_header(text):
     return Paragraph(str(text), wrap_style_header)
 
+
 # --------------------------------------------------
 # Callback: gerar PDF de fiscais
 # --------------------------------------------------
@@ -626,6 +677,7 @@ def gerar_pdf_fiscais(n, dados_fis):
         return None
 
     df = pd.DataFrame(dados_fis)
+
     buffer = BytesIO()
     pagesize = landscape(A4)
     doc = SimpleDocTemplate(
@@ -645,19 +697,17 @@ def gerar_pdf_fiscais(n, dados_fis):
     data_hora = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
     story.append(
         Table(
-            [
-                [
-                    Paragraph(
-                        data_hora,
-                        ParagraphStyle(
-                            "data_topo_fiscais",
-                            fontSize=9,
-                            alignment=TA_RIGHT,
-                            textColor="#333333",
-                        ),
-                    )
-                ]
-            ],
+            [[
+                Paragraph(
+                    data_hora,
+                    ParagraphStyle(
+                        "data_topo_fiscais",
+                        fontSize=9,
+                        alignment=TA_RIGHT,
+                        textColor="#333333",
+                    ),
+                )
+            ]],
             colWidths=[pagesize[0] - 0.6 * inch],
         )
     )
@@ -683,20 +733,12 @@ def gerar_pdf_fiscais(n, dados_fis):
 
     instituicao = Paragraph(
         texto_instituicao,
-        ParagraphStyle(
-            "instituicao_fiscais",
-            alignment=TA_CENTER,
-            leading=16,
-        ),
+        ParagraphStyle("instituicao_fiscais", alignment=TA_CENTER, leading=16),
     )
 
     cabecalho = Table(
         [[logo_esq, instituicao, logo_dir]],
-        colWidths=[
-            1.4 * inch,
-            4.2 * inch,
-            1.4 * inch,
-        ],
+        colWidths=[1.4 * inch, 4.2 * inch, 1.4 * inch],
     )
     cabecalho.setStyle(
         TableStyle(
@@ -725,22 +767,11 @@ def gerar_pdf_fiscais(n, dados_fis):
     )
     story.append(titulo)
     story.append(Spacer(1, 0.2 * inch))
-
-    story.append(
-        Paragraph(f"Total de registros: {len(df)}", styles["Normal"])
-    )
+    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
     story.append(Spacer(1, 0.15 * inch))
 
     # Colunas do PDF
-    cols = [
-        "Setor",
-        "Contrato",
-        "Objeto",
-        "Contratada",
-        "Final da Vigência",
-        "Servidores",
-        "Status",
-    ]
+    cols = ["Setor", "Contrato", "Objeto", "Contratada", "Final da Vigência", "Servidores", "Status"]
     for c in cols:
         if c not in df.columns:
             df[c] = ""
@@ -751,8 +782,7 @@ def gerar_pdf_fiscais(n, dados_fis):
     status_values = df["Status"].fillna("").tolist()
 
     for _, row in df_pdf[cols].iterrows():
-        linha = [wrap_data(row[c]) for c in cols]
-        table_data.append(linha)
+        table_data.append([wrap_data(row[c]) for c in cols])
 
     col_widths = [
         0.75 * inch,  # Setor
@@ -776,54 +806,17 @@ def gerar_pdf_fiscais(n, dados_fis):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        (
-            "ROWBACKGROUNDS",
-            (0, 1),
-            (-1, -1),
-            [colors.white, colors.HexColor("#f0f0f0")],
-        ),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
     ]
 
-    # Cores por status (linha inteira)
     for i, status in enumerate(status_values, 1):
         status_str = str(status).strip().lower()
         if "vencido" in status_str:
-            table_styles.append(
-                (
-                    "BACKGROUND",
-                    (0, i),
-                    (-1, i),
-                    colors.HexColor("#ffcccc"),
-                )
-            )
-            table_styles.append(
-                (
-                    "TEXTCOLOR",
-                    (0, i),
-                    (-1, i),
-                    colors.HexColor("#cc0000"),
-                )
-            )
-        elif (
-            "próximo do vencimento" in status_str
-            or "proximo do vencimento" in status_str
-        ):
-            table_styles.append(
-                (
-                    "BACKGROUND",
-                    (0, i),
-                    (-1, i),
-                    colors.HexColor("#ffffcc"),
-                )
-            )
-            table_styles.append(
-                (
-                    "TEXTCOLOR",
-                    (0, i),
-                    (-1, i),
-                    colors.HexColor("#cc8800"),
-                )
-            )
+            table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffcccc")))
+            table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.HexColor("#cc0000")))
+        elif "próximo do vencimento" in status_str or "proximo do vencimento" in status_str:
+            table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffffcc")))
+            table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.HexColor("#cc8800")))
 
     tbl.setStyle(TableStyle(table_styles))
     story.append(tbl)
@@ -831,7 +824,4 @@ def gerar_pdf_fiscais(n, dados_fis):
     doc.build(story)
     buffer.seek(0)
 
-    return dcc.send_bytes(
-        buffer.getvalue(),
-        f"fiscais_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf",
-    )
+    return dcc.send_bytes(buffer.getvalue(), f"fiscais_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf")

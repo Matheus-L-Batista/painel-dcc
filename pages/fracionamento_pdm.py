@@ -1,14 +1,15 @@
 import dash
-from dash import html, dcc, dash_table, Input, Output, State, no_update
+from dash import html, dcc, dash_table, Input, Output, State
+from dash.exceptions import PreventUpdate
 
 import pandas as pd
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pytz import timezone
 
 from io import BytesIO
 
-from reportlab.lib.pagesizes import portrait, A4  # Mudado de landscape para portrait
+from reportlab.lib.pagesizes import portrait, A4
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -20,14 +21,15 @@ from reportlab.platypus import (
 )
 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT  # Adicionado TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.lib import colors
 import os
+import threading
+import pickle
 
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
-
 dash.register_page(
     __name__,
     path="/fracionamento_pdm",
@@ -38,7 +40,6 @@ dash.register_page(
 # --------------------------------------------------
 # URL da planilha
 # --------------------------------------------------
-
 URL_LIMITE_GASTO_ITA = (
     "https://docs.google.com/spreadsheets/d/"
     "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
@@ -49,16 +50,13 @@ COL_PDM = "PDM"
 COL_DESC_ORIG = "Descrição.1"
 COL_VALOR_EMPENHADO_ORIG = "Unnamed: 7"
 
-DATA_HOJE = date.today().strftime("%d/%m/%Y")
-
 # Limite da dispensa 2026
 VALOR_LIMITE_2026 = 65492.11
+
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
 # --------------------------------------------------
-
-
 def carregar_dados_limite_pdm():
     df = pd.read_csv(URL_LIMITE_GASTO_ITA)
     df.columns = [c.strip() for c in df.columns]
@@ -85,45 +83,143 @@ def carregar_dados_limite_pdm():
             .str.replace(".", "", regex=False)
             .str.replace(",", ".", regex=False)
         )
-        df["Valor Empenhado"] = pd.to_numeric(
-            df["Valor Empenhado"], errors="coerce"
-        )
+        df["Valor Empenhado"] = pd.to_numeric(df["Valor Empenhado"], errors="coerce")
     else:
         df["Valor Empenhado"] = 0.0
 
-    valor_limite = VALOR_LIMITE_2026
-    df["Limite da Dispensa"] = valor_limite
-    df["Saldo para contratação"] = (
-        df["Limite da Dispensa"] - df["Valor Empenhado"]
-    )
+    df["Limite da Dispensa"] = VALOR_LIMITE_2026
+    df["Saldo para contratação"] = df["Limite da Dispensa"] - df["Valor Empenhado"]
 
     df = df.rename(columns={COL_DESC_ORIG: "Descrição"})
 
     return df
 
 
-df_limite_pdm_base = carregar_dados_limite_pdm()
+# --------------------------------------------------
+# Cache (memória + disco) + atualização automática
+# --------------------------------------------------
+CACHE_TTL_MINUTOS = 60  # 1h
+_CACHE_LOCK = threading.Lock()
+_DF_CACHE = None
+_DF_CACHE_AT = None
 
-# NÃO considerar o PDM 00000 na lista
-PDMS_UNICOS = sorted(
-    c
-    for c in df_limite_pdm_base[COL_PDM].dropna().unique()
-    if isinstance(c, str)
-    and c.strip() != ""
-    and c.strip() != "00000"  # exclui 00000
+_CACHE_DIR = os.path.join(
+    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
+    ".cache_pdm",
 )
+os.makedirs(_CACHE_DIR, exist_ok=True)
+_CACHE_FILE = os.path.join(_CACHE_DIR, "df_pdm.pkl")
+_CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
 
-dropdown_style = {
-    "color": "black",
-    "width": "100%",
-    "marginBottom": "6px",
-    "whiteSpace": "normal",
+
+def _now_sp():
+    return datetime.now(timezone("America/Sao_Paulo"))
+
+
+def _fmt_dt(dt):
+    if not dt:
+        return "-"
+    try:
+        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _load_disk_cache():
+    try:
+        if not (os.path.exists(_CACHE_FILE) and os.path.exists(_CACHE_META)):
+            return None, None
+        with open(_CACHE_META, "rb") as f:
+            meta = pickle.load(f)
+        cached_at = meta.get("cached_at")
+        if not cached_at:
+            return None, None
+        cached_at_dt = datetime.fromisoformat(cached_at)
+        age = datetime.now() - cached_at_dt
+        if age > timedelta(minutes=CACHE_TTL_MINUTOS):
+            return None, None
+        df = pd.read_pickle(_CACHE_FILE)
+        return df, cached_at_dt
+    except Exception:
+        return None, None
+
+
+def _save_disk_cache(df: pd.DataFrame, cached_at: datetime):
+    try:
+        df.to_pickle(_CACHE_FILE)
+        with open(_CACHE_META, "wb") as f:
+            pickle.dump({"cached_at": cached_at.isoformat()}, f)
+    except Exception:
+        pass
+
+
+def get_df_pdm(force: bool = False):
+    """
+    Retorna (df, status_msg).
+    - Cache em memória (rápido)
+    - Se memória vazia, tenta disco
+    - Se TTL expirou ou force=True, lê da planilha
+    """
+    global _DF_CACHE, _DF_CACHE_AT
+
+    now_naive = datetime.now()
+    stale = (
+        _DF_CACHE is None
+        or _DF_CACHE_AT is None
+        or (now_naive - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+    )
+
+    if force or stale:
+        with _CACHE_LOCK:
+            now2 = datetime.now()
+            stale2 = (
+                _DF_CACHE is None
+                or _DF_CACHE_AT is None
+                or (now2 - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+            )
+
+            if (not force) and stale2:
+                df_disk, at_disk = _load_disk_cache()
+                if df_disk is not None and at_disk is not None:
+                    _DF_CACHE = df_disk
+                    _DF_CACHE_AT = now2
+                    return _DF_CACHE, f"Dados carregados do cache em disco ({_fmt_dt(at_disk)})."
+
+            if force or stale2:
+                df = carregar_dados_limite_pdm()
+                _DF_CACHE = df
+                _DF_CACHE_AT = now2
+                _save_disk_cache(df, now2)
+                return _DF_CACHE, f"Dados recarregados da planilha ({_fmt_dt(_now_sp())})."
+
+    return _DF_CACHE, f"Dados em cache (memória) — verificado em {_fmt_dt(_now_sp())}."
+
+
+def pdms_unicos(df_base: pd.DataFrame):
+    if df_base is None or df_base.empty or COL_PDM not in df_base.columns:
+        return []
+    return sorted(
+        c
+        for c in df_base[COL_PDM].dropna().unique()
+        if isinstance(c, str) and c.strip() and c.strip() != "00000"
+    )
+
+
+# --------------------------------------------------
+# Estilos
+# --------------------------------------------------
+botao_style = {
+    "backgroundColor": "#0b2b57",
+    "color": "white",
+    "border": "1px solid #0b2b57",
+    "borderRadius": "4px",
+    "padding": "6px 12px",
+    "cursor": "pointer",
 }
 
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
-
 layout = html.Div(
     style={
         "display": "flex",
@@ -136,6 +232,7 @@ layout = html.Div(
         ),
     },
     children=[
+        dcc.Location(id="url"),
         # Coluna esquerda
         html.Div(
             id="coluna_esquerda_pdm",
@@ -190,16 +287,12 @@ layout = html.Div(
                             "https://catalogo.compras.gov.br/cnbs-web/busca",
                             href="https://catalogo.compras.gov.br/cnbs-web/busca",
                             target="_blank",
-                            style={
-                                "color": "#1d4ed8",
-                                "textDecoration": "underline",
-                            },
+                            style={"color": "#1d4ed8", "textDecoration": "underline"},
                         ),
                         ", informar o número do CATMAT. Exemplo para o CATMAT 605322: a consulta "
                         "retornará PDM: 8320. Esse é o número que deverá ser considerado.",
                     ]
                 ),
-
                 html.Br(),
                 html.P("Exemplo para a necessidade de contratação de três itens:"),
                 html.P(
@@ -230,11 +323,7 @@ layout = html.Div(
         # Coluna direita
         html.Div(
             id="coluna_direita_pdm",
-            style={
-                "flex": "2 1 67%",
-                "padding": "5px",
-                "minWidth": "400px",
-            },
+            style={"flex": "2 1 67%", "padding": "5px", "minWidth": "400px"},
             children=[
                 html.Div(
                     id="barra_filtros_limite_itajuba_pdm",
@@ -250,11 +339,7 @@ layout = html.Div(
                             },
                             children=[
                                 html.Div(
-                                    style={
-                                        "minWidth": "220px",
-                                        "flex": "1 1 260px",
-                                        "maxHeight": "60px",
-                                    },
+                                    style={"minWidth": "220px", "flex": "1 1 260px", "maxHeight": "60px"},
                                     children=[
                                         html.Label("PDM (digitação)"),
                                         dcc.Input(
@@ -264,10 +349,7 @@ layout = html.Div(
                                                 "Digite parte do PDM, selecione na lista e, "
                                                 "após a seleção, apague o texto digitado."
                                             ),
-                                            style={
-                                                "width": "100%",
-                                                "marginBottom": "6px",
-                                            },
+                                            style={"width": "100%", "marginBottom": "6px"},
                                         ),
                                     ],
                                 ),
@@ -298,10 +380,7 @@ layout = html.Div(
                                         html.Label("PDM (lista)"),
                                         dcc.Checklist(
                                             id="filtro_pdm_lista_itajuba",
-                                            options=[
-                                                {"label": c, "value": c}
-                                                for c in PDMS_UNICOS
-                                            ],
+                                            options=[],
                                             value=[],
                                             style={
                                                 "display": "flex",
@@ -310,17 +389,13 @@ layout = html.Div(
                                                 "rowGap": "2px",
                                             },
                                             inputStyle={"marginRight": "4px"},
-                                            labelStyle={
-                                                "display": "inline-block",
-                                                "width": "18%",
-                                                "fontSize": "11px",
-                                            },
+                                            labelStyle={"display": "inline-block", "width": "18%", "fontSize": "11px"},
                                         ),
                                     ],
                                 ),
                             ],
                         ),
-                        # Terceira linha: título + textos + cards + botões
+                        # Terceira linha: título + cards + botões
                         html.Div(
                             style={
                                 "marginTop": "8px",
@@ -332,37 +407,20 @@ layout = html.Div(
                             },
                             children=[
                                 html.Div(
-                                    style={
-                                        "display": "flex",
-                                        "flexDirection": "column",
-                                        "gap": "2px",
-                                        "maxWidth": "520px",
-                                    },
+                                    style={"display": "flex", "flexDirection": "column", "gap": "2px", "maxWidth": "520px"},
                                     children=[
-                                        html.H4(
-                                            "Limite de Gasto – Itajubá por PDM",
-                                            style={"margin": "0px"},
-                                        ),
+                                        html.H4("Limite de Gasto – Itajubá por PDM", style={"margin": "0px"}),
                                         html.Div(
                                             children=[
-                                                html.Span(
-                                                    "O valor global do processo de compra "
-                                                    "não poderá exceder esse limite."
-                                                ),
+                                                html.Span("O valor global do processo de compra não poderá exceder esse limite."),
                                                 html.Br(),
-                                                html.Span(
-                                                    "O valor de cada item não poderá exceder "
-                                                    "o Saldo para Contratação."
-                                                ),
+                                                html.Span("O valor de cada item não poderá exceder o Saldo para Contratação."),
                                             ],
-                                            style={
-                                                "color": "red",
-                                                "fontSize": "12px",
-                                            },
+                                            style={"color": "red", "fontSize": "12px"},
                                         ),
                                     ],
                                 ),
-                                # CARD DO LIMITE DA DISPENSA 2026
+                                # CARD LIMITE
                                 html.Div(
                                     style={
                                         "border": "1px solid #d1d5db",
@@ -376,25 +434,15 @@ layout = html.Div(
                                     children=[
                                         html.Div(
                                             "Limite da dispensa (2026)",
-                                            style={
-                                                "fontWeight": "bold",
-                                                "color": "#166534",
-                                                "marginBottom": "2px",
-                                                "textAlign": "center",
-                                            },
+                                            style={"fontWeight": "bold", "color": "#166534", "marginBottom": "2px", "textAlign": "center"},
                                         ),
                                         html.Div(
                                             "R$ 65.492,11",
-                                            style={
-                                                "fontSize": "18px",
-                                                "fontWeight": "bold",
-                                                "color": "#14532d",
-                                                "textAlign": "center",
-                                            },
+                                            style={"fontSize": "18px", "fontWeight": "bold", "color": "#14532d", "textAlign": "center"},
                                         ),
                                     ],
                                 ),
-                                # CARD DA DATA DA CONSULTA
+                                # CARD DATA
                                 html.Div(
                                     style={
                                         "border": "1px solid #d1d5db",
@@ -408,62 +456,41 @@ layout = html.Div(
                                     children=[
                                         html.Div(
                                             "Data da consulta",
-                                            style={
-                                                "fontWeight": "bold",
-                                                "color": "#111827",
-                                                "marginBottom": "2px",
-                                                "textAlign": "center",
-                                            },
+                                            style={"fontWeight": "bold", "color": "#111827", "marginBottom": "2px", "textAlign": "center"},
                                         ),
                                         html.Div(
-                                            DATA_HOJE,
-                                            style={
-                                                "fontSize": "16px",
-                                                "fontWeight": "bold",
-                                                "color": "#111827",
-                                                "textAlign": "center",
-                                            },
+                                            id="card_data_consulta_pdm",
+                                            children=date.today().strftime("%d/%m/%Y"),
+                                            style={"fontSize": "16px", "fontWeight": "bold", "color": "#111827", "textAlign": "center"},
                                         ),
                                     ],
                                 ),
-                                # Botões
+                                # Botões + status
                                 html.Div(
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "gap": "10px",
-                                        "flexWrap": "wrap",
-                                    },
+                                    style={"display": "flex", "alignItems": "center", "gap": "10px", "flexWrap": "wrap"},
                                     children=[
                                         html.Button(
                                             "Limpar filtros",
                                             id="btn_limpar_filtros_limite_itajuba_pdm",
                                             n_clicks=0,
-                                            style={
-                                                "backgroundColor": "#0b2b57",
-                                                "color": "white",
-                                                "border": "1px solid #0b2b57",
-                                                "borderRadius": "4px",
-                                                "padding": "6px 12px",
-                                                "cursor": "pointer",
-                                            },
+                                            style=botao_style,
+                                        ),
+                                        html.Button(
+                                            "Atualizar Dados",
+                                            id="btn_reload_pdm",
+                                            n_clicks=0,
+                                            style=botao_style,
                                         ),
                                         html.Button(
                                             "Baixar Relatório PDF",
                                             id="btn_download_relatorio_limite_itajuba_pdm",
                                             n_clicks=0,
-                                            style={
-                                                "backgroundColor": "#0b2b57",
-                                                "color": "white",
-                                                "border": "1px solid #0b2b57",
-                                                "borderRadius": "4px",
-                                                "padding": "6px 12px",
-                                                "cursor": "pointer",
-                                                "marginLeft": "4px",
-                                            },
+                                            style=botao_style,
                                         ),
-                                        dcc.Download(
-                                            id="download_relatorio_limite_itajuba_pdm"
+                                        dcc.Download(id="download_relatorio_limite_itajuba_pdm"),
+                                        html.Div(
+                                            id="info-atualizacao-pdm",
+                                            style={"fontSize": "12px", "color": "#333"},
                                         ),
                                     ],
                                 ),
@@ -476,21 +503,17 @@ layout = html.Div(
                     columns=[
                         {"name": "PDM", "id": COL_PDM},
                         {"name": "Descrição", "id": "Descrição"},
-                        {
-                            "name": "Valor Empenhado (R$)",
-                            "id": "Valor Empenhado_fmt",
-                        },
-                        {
-                            "name": "Limite da Dispensa (R$)",
-                            "id": "Limite da Dispensa_fmt",
-                        },
-                        {
-                            "name": "Saldo para contratação (R$)",
-                            "id": "Saldo para contratação_fmt",
-                        },
+                        {"name": "Valor Empenhado (R$)", "id": "Valor Empenhado_fmt"},
+                        {"name": "Limite da Dispensa (R$)", "id": "Limite da Dispensa_fmt"},
+                        {"name": "Saldo para contratação (R$)", "id": "Saldo para contratação_fmt"},
+                        # colunas "técnicas" (escondidas) para condição numérica
+                        {"name": "Valor Empenhado", "id": "Valor Empenhado"},
+                        {"name": "Limite da Dispensa", "id": "Limite da Dispensa"},
+                        {"name": "Saldo para contratação", "id": "Saldo para contratação"},
                     ],
+                    hidden_columns=["Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"],
                     data=[],
-                    page_action='none',  # DESATIVA PAGINAÇÃO - TODAS AS LINHAS EM UMA PÁGINA
+                    page_action="none",
                     row_selectable=False,
                     cell_selectable=False,
                     style_table={
@@ -518,135 +541,153 @@ layout = html.Div(
                         "zIndex": 5,
                     },
                     style_data_conditional=[
-                        # zebra: linhas ímpares em cinza-claro
+                        {"if": {"row_index": "odd"}, "backgroundColor": "#f5f5f5"},
                         {
-                            "if": {"row_index": "odd"},
-                            "backgroundColor": "#f5f5f5",
-                        },
-                        # saldo <= 0 sobrescreve a cor
-                        {
-                            "if": {
-                                "filter_query": "{Saldo para contratação} <= 0",
-                            },
+                            "if": {"filter_query": "{Saldo para contratação} <= 0"},
                             "backgroundColor": "#ffcccc",
                             "color": "#cc0000",
                         },
                     ],
                 ),
                 dcc.Store(id="store_dados_limite_itajuba_pdm"),
+                dcc.Store(id="store-reload-pdm"),
+                dcc.Interval(id="interval-reload-pdm", interval=60 * 60 * 1000, n_intervals=0),  # 1h
             ],
         ),
     ],
 )
 
-# --------------------------------------------------
-# Callbacks de filtros e tabela
-# --------------------------------------------------
 
-
+# --------------------------------------------------
+# Callback: abrir página / interval / botão (recarrega cache + atualiza lista PDM + status)
+# --------------------------------------------------
 @dash.callback(
+    Output("store-reload-pdm", "data"),
+    Output("info-atualizacao-pdm", "children"),
     Output("filtro_pdm_lista_itajuba", "options"),
-    Input("filtro_pdm_texto_itajuba", "value"),
+    Output("card_data_consulta_pdm", "children"),
+    Input("url", "pathname"),
+    Input("interval-reload-pdm", "n_intervals"),
+    Input("btn_reload_pdm", "n_clicks"),
     State("filtro_pdm_lista_itajuba", "value"),
 )
-def atualizar_opcoes_pdm(pdm_texto, valores_selecionados):
-    base = PDMS_UNICOS
+def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks, selecionados):
+    if pathname != "/fracionamento_pdm":
+        raise PreventUpdate
+
+    force = bool(n_clicks) and n_clicks > 0
+    df, status = get_df_pdm(force=force)
+
+    base = pdms_unicos(df)
+    selecionados = selecionados or []
+    selecionados_validos = [v for v in selecionados if v in base]
+
+    opcoes = [{"label": c, "value": c} for c in base]
+
+    msg = html.Div([html.B("Dados disponíveis. "), html.Span(status)])
+    data_consulta = _now_sp().strftime("%d/%m/%Y")
+    return {"ts": datetime.now().isoformat(), "sel": selecionados_validos}, msg, opcoes, data_consulta
+
+
+# --------------------------------------------------
+# Callback: filtra opções da checklist via texto (mantém selecionados)
+# --------------------------------------------------
+@dash.callback(
+    Output("filtro_pdm_lista_itajuba", "options", allow_duplicate=True),
+    Input("filtro_pdm_texto_itajuba", "value"),
+    Input("store-reload-pdm", "data"),
+    State("filtro_pdm_lista_itajuba", "value"),
+    prevent_initial_call=True,
+)
+def atualizar_opcoes_pdm(pdm_texto, _reload, valores_selecionados):
+    df, _ = get_df_pdm(force=False)
+    base = pdms_unicos(df)
 
     if not pdm_texto or not str(pdm_texto).strip():
-        opcoes = [{"label": c, "value": c} for c in base]
+        filtradas = base
     else:
         termo = str(pdm_texto).strip().lower()
         filtradas = [c for c in base if termo in str(c).lower()]
 
-        if valores_selecionados:
-            for v in valores_selecionados:
-                if v in base and v not in filtradas:
-                    filtradas.append(v)
+    valores_selecionados = valores_selecionados or []
+    for v in valores_selecionados:
+        if v in base and v not in filtradas:
+            filtradas.append(v)
 
-        opcoes = [
-            {"label": c, "value": c} for c in sorted(filtradas)
-        ]
-
-    return opcoes
+    return [{"label": c, "value": c} for c in sorted(filtradas)]
 
 
+# --------------------------------------------------
+# Callback: atualiza tabela (reage ao reload também)
+# --------------------------------------------------
 @dash.callback(
     Output("tabela_limite_itajuba_pdm", "data"),
     Output("store_dados_limite_itajuba_pdm", "data"),
+    Input("store-reload-pdm", "data"),
     Input("filtro_pdm_lista_itajuba", "value"),
 )
-def atualizar_tabela_limite_itajuba_pdm(pdm_lista):
-    dff = df_limite_pdm_base.copy()
+def atualizar_tabela_limite_itajuba_pdm(_reload, pdm_lista):
+    df_base, _ = get_df_pdm(force=False)
+    dff = df_base.copy() if df_base is not None else pd.DataFrame()
 
-    # Remove sempre o PDM 00000 da tabela
+    if dff.empty:
+        return [], []
+
     dff = dff[dff[COL_PDM] != "00000"]
 
-    # Filtro SOMENTE pela checklist de PDM
     if pdm_lista:
         dff = dff[dff[COL_PDM].isin(pdm_lista)]
 
-    cols_tabela = [
+    cols_raw = [COL_PDM, "Descrição", "Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]
+    for c in cols_raw:
+        if c not in dff.columns:
+            dff[c] = pd.NA
+
+    dff_display = dff[cols_raw].copy()
+
+    def fmt_moeda(v):
+        if pd.isna(v):
+            return ""
+        return "R$ " + (f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    dff_display["Valor Empenhado_fmt"] = dff_display["Valor Empenhado"].apply(fmt_moeda)
+    dff_display["Limite da Dispensa_fmt"] = dff_display["Limite da Dispensa"].apply(fmt_moeda)
+    dff_display["Saldo para contratação_fmt"] = dff_display["Saldo para contratação"].apply(fmt_moeda)
+
+    # DataTable recebe também os raws (escondidos) para permitir filter_query numérico
+    cols_out = [
         COL_PDM,
         "Descrição",
+        "Valor Empenhado_fmt",
+        "Limite da Dispensa_fmt",
+        "Saldo para contratação_fmt",
         "Valor Empenhado",
         "Limite da Dispensa",
         "Saldo para contratação",
     ]
 
-    for c in cols_tabela:
-        if c not in dff.columns:
-            dff[c] = pd.NA
-
-    dff_display = dff[cols_tabela].copy()
-
-    def fmt_moeda(v):
-        if pd.isna(v):
-            return ""
-        return "R$ " + (
-            f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
-
-    dff_display["Valor Empenhado_fmt"] = dff_display[
-        "Valor Empenhado"
-    ].apply(fmt_moeda)
-    dff_display["Limite da Dispensa_fmt"] = dff_display[
-        "Limite da Dispensa"
-    ].apply(fmt_moeda)
-    dff_display["Saldo para contratação_fmt"] = dff_display[
-        "Saldo para contratação"
-    ].apply(fmt_moeda)
-
-    cols_tabela_display = [
-        COL_PDM,
-        "Descrição",
-        "Valor Empenhado_fmt",
-        "Limite da Dispensa_fmt",
-        "Saldo para contratação",
-        "Saldo para contratação_fmt",
-    ]
-
-    return (
-        dff_display[cols_tabela_display].to_dict("records"),
-        dff.to_dict("records"),
-    )
+    return dff_display[cols_out].to_dict("records"), dff.to_dict("records")
 
 
+# --------------------------------------------------
+# Callback: limpar filtros
+# --------------------------------------------------
 @dash.callback(
     Output("filtro_pdm_texto_itajuba", "value"),
     Output("filtro_pdm_lista_itajuba", "value"),
     Input("btn_limpar_filtros_limite_itajuba_pdm", "n_clicks"),
     prevent_initial_call=True,
 )
-def limpar_filtros_limite_itajuba_pdm(n):
+def limpar_filtros_limite_itajuba_pdm(_n):
     return None, []
+
 
 # --------------------------------------------------
 # PDF
 # --------------------------------------------------
-
 wrap_style_data_pdm = ParagraphStyle(
     name="wrap_limite_itajuba_pdm_data",
-    fontSize=7,  # Reduzido para melhor ajuste no modo retrato
+    fontSize=7,
     leading=9,
     spaceAfter=4,
     alignment=TA_CENTER,
@@ -655,7 +696,7 @@ wrap_style_data_pdm = ParagraphStyle(
 
 wrap_style_header_pdm = ParagraphStyle(
     name="wrap_limite_itajuba_pdm_header",
-    fontSize=7,  # Reduzido para melhor ajuste no modo retrato
+    fontSize=7,
     leading=9,
     spaceAfter=4,
     alignment=TA_CENTER,
@@ -667,7 +708,7 @@ wrap_style_desc_pdm = ParagraphStyle(
     fontSize=7,
     leading=9,
     spaceAfter=4,
-    alignment=TA_LEFT,  # Alinhamento à esquerda para a descrição
+    alignment=TA_LEFT,
     textColor=colors.black,
 )
 
@@ -696,11 +737,18 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
 
     df = pd.DataFrame(dados)
 
-    # Garante também no PDF que o PDM 00000 não apareça
-    df = df[df[COL_PDM] != "00000"]
+    # Remove PDM 00000 também no PDF
+    if COL_PDM in df.columns:
+        df = df[df[COL_PDM] != "00000"]
+
+    # como store guarda raws, garante as colunas esperadas
+    cols = [COL_PDM, "Descrição", "Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]
+    for c in cols:
+        if c not in df.columns:
+            df[c] = ""
 
     buffer = BytesIO()
-    pagesize = portrait(A4)  # Mudado para retrato
+    pagesize = portrait(A4)
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
@@ -713,52 +761,27 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
     styles = getSampleStyleSheet()
     story = []
 
-    # Data / Hora
     tz_brasilia = timezone("America/Sao_Paulo")
-    data_hora_brasilia = datetime.now(tz_brasilia).strftime(
-        "%d/%m/%Y %H:%M:%S"
-    )
+    data_hora_brasilia = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
 
-    data_top_table = Table(
-        [
-            [
-                Paragraph(
-                    data_hora_brasilia,
-                    ParagraphStyle(
-                        "data_topo",
-                        fontSize=9,
-                        alignment=TA_RIGHT,
-                        textColor="#333333",
-                    ),
-                )
-            ]
-        ],
-        colWidths=[pagesize[0] - 0.6 * inch],
-    )
-
-    data_top_table.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]
+    story.append(
+        Table(
+            [[Paragraph(
+                data_hora_brasilia,
+                ParagraphStyle("data_topo", fontSize=9, alignment=TA_RIGHT, textColor="#333333"),
+            )]],
+            colWidths=[pagesize[0] - 0.6 * inch],
         )
     )
-
-    story.append(data_top_table)
     story.append(Spacer(1, 0.15 * inch))
 
-    # Cabeçalho: Logo | Texto | Logo
     logo_esq = (
-        Image("assets/brasaobrasil.png", 1.0 * inch, 1.0 * inch)  # Reduzido para melhor ajuste
-        if os.path.exists("assets/brasaobrasil.png")
-        else ""
+        Image("assets/brasaobrasil.png", 1.0 * inch, 1.0 * inch)
+        if os.path.exists("assets/brasaobrasil.png") else ""
     )
-
     logo_dir = (
-        Image("assets/simbolo_RGB.png", 1.0 * inch, 1.0 * inch)  # Reduzido para melhor ajuste
-        if os.path.exists("assets/simbolo_RGB.png")
-        else ""
+        Image("assets/simbolo_RGB.png", 1.0 * inch, 1.0 * inch)
+        if os.path.exists("assets/simbolo_RGB.png") else ""
     )
 
     texto_instituicao = (
@@ -769,76 +792,37 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
 
     instituicao = Paragraph(
         texto_instituicao,
-        ParagraphStyle(
-            "instituicao_pdm",
-            alignment=TA_CENTER,
-            leading=14,
-        ),
+        ParagraphStyle("instituicao_pdm", alignment=TA_CENTER, leading=14),
     )
 
-    cabecalho = Table(
-        [[logo_esq, instituicao, logo_dir]],
-        colWidths=[1.2 * inch, 3.5 * inch, 1.2 * inch],  # Ajustado para retrato
-    )
-
+    cabecalho = Table([[logo_esq, instituicao, logo_dir]], colWidths=[1.2 * inch, 3.5 * inch, 1.2 * inch])
     cabecalho.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
+        TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ])
     )
 
     story.append(cabecalho)
     story.append(Spacer(1, 0.25 * inch))
 
-    # Título
-    titulo_texto = (
-        "Consulta ao Fracionamento de Despesa 2026 - PDM (Material): "
-        "UASG: 153030 - Campus Itajubá"
-    )
-
-    titulo_paragraph = Paragraph(
-        titulo_texto,
-        ParagraphStyle(
-            "titulo",
-            alignment=TA_CENTER,
-            fontSize=10,
-            leading=14,
-            textColor=colors.black,
-        ),
-    )
-
-    story.append(titulo_paragraph)
-    story.append(Spacer(1, 0.15 * inch))
-
+    titulo_texto = "Consulta ao Fracionamento de Despesa 2026 - PDM (Material): UASG: 153030 - Campus Itajubá"
     story.append(
-        Paragraph(f"Total de registros: {len(df)}", styles["Normal"])
+        Paragraph(
+            titulo_texto,
+            ParagraphStyle("titulo", alignment=TA_CENTER, fontSize=10, leading=14, textColor=colors.black),
+        )
     )
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
     story.append(Spacer(1, 0.1 * inch))
-
-    # Tabela
-    cols = [
-        COL_PDM,
-        "Descrição",
-        "Valor Empenhado",
-        "Limite da Dispensa",
-        "Saldo para contratação",
-    ]
-
-    for c in cols:
-        if c not in df.columns:
-            df[c] = ""
 
     def fmt_moeda_pdf(v):
         if pd.isna(v):
             return ""
-        return "R$ " + (
-            f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
+        return "R$ " + (f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
     df_pdf = df.copy()
     for col in cols[2:]:
@@ -847,26 +831,23 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
     header = [wrap_header_pdm(col) for col in cols]
     table_data = [header]
 
-    saldo_values = df["Saldo para contratação"].fillna(0).tolist()
+    saldo_values = pd.to_numeric(df["Saldo para contratação"], errors="coerce").fillna(0).tolist()
 
     for _, row in df_pdf[cols].iterrows():
-        # Trata cada coluna separadamente
         row_data = []
         for i, c in enumerate(cols):
-            if i == 1:  # Coluna Descrição - alinhamento à esquerda
+            if i == 1:
                 row_data.append(wrap_desc_pdm(row[c]))
-            else:  # Outras colunas - alinhamento ao centro
+            else:
                 row_data.append(wrap_data_pdm(row[c]))
         table_data.append(row_data)
 
-    page_width = pagesize[0] - 0.6 * inch
-    # Ajuste das larguras das colunas para modo retrato
     col_widths = [
         0.8 * inch,  # PDM
-        2.5 * inch,  # Descrição (mais larga)
+        2.5 * inch,  # Descrição
         1.0 * inch,  # Valor Empenhado
-        1.0 * inch,  # Limite da Dispensa
-        1.0 * inch,  # Saldo para contratação
+        1.0 * inch,  # Limite
+        1.0 * inch,  # Saldo
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -878,40 +859,18 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
-        # Descrição alinhada à esquerda
         ("ALIGN", (1, 1), (1, -1), "LEFT"),
-        # Linhas alternadas: branca e cinza-claro
-        (
-            "ROWBACKGROUNDS",
-            (0, 1),
-            (-1, -1),
-            [colors.white, colors.whitesmoke],
-        ),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
     ]
 
-    # Destaca saldo <= 0
     for row_idx, saldo in enumerate(saldo_values, 1):
         if saldo <= 0:
-            table_styles.append(
-                (
-                    "BACKGROUND",
-                    (0, row_idx),
-                    (-1, row_idx),
-                    colors.HexColor("#ffcccc"),
-                )
-            )
-            table_styles.append(
-                (
-                    "TEXTCOLOR",
-                    (0, row_idx),
-                    (-1, row_idx),
-                    colors.HexColor("#cc0000"),
-                )
-            )
+            table_styles.append(("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#ffcccc")))
+            table_styles.append(("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.HexColor("#cc0000")))
 
     tbl.setStyle(TableStyle(table_styles))
-
     story.append(tbl)
+
     doc.build(story)
     buffer.seek(0)
 

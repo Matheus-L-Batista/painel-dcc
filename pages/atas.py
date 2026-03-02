@@ -1,9 +1,13 @@
 import dash
 from dash import html, dcc, dash_table, callback
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 import pandas as pd
-from datetime import datetime
-
+from datetime import datetime, timedelta
+from pytz import timezone
+import os
+import threading
+import pickle
 
 # --------------------------------------------------
 # Registro da página
@@ -32,14 +36,12 @@ URL_CONTROLE_ATAS = (
 def carregar_base_controle() -> pd.DataFrame:
     # Cabeçalho começa na 2ª linha
     df = pd.read_csv(URL_CONTROLE_ATAS, header=1)
-
-    # Limpa nomes das colunas (sem remover colunas antes do fatiamento)
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
 
-def carregar_atas_vigentes() -> pd.DataFrame:
-    df = carregar_base_controle()
+def carregar_atas_vigentes(df_base: pd.DataFrame) -> pd.DataFrame:
+    df = df_base.copy()
 
     # A:E => índices 0..4 (5 colunas)
     if df.shape[1] < 5:
@@ -56,9 +58,7 @@ def carregar_atas_vigentes() -> pd.DataFrame:
 
     # Filtra somente vigentes
     if "Data de Término" in df.columns:
-        df["Data de Término_dt"] = pd.to_datetime(
-            df["Data de Término"], dayfirst=True, errors="coerce"
-        )
+        df["Data de Término_dt"] = pd.to_datetime(df["Data de Término"], dayfirst=True, errors="coerce")
         hoje = datetime.now().date()
         df = df[df["Data de Término_dt"].notna()]
         df = df[df["Data de Término_dt"].dt.date >= hoje]
@@ -78,11 +78,10 @@ def carregar_atas_vigentes() -> pd.DataFrame:
     return df[[c for c in cols if c in df.columns]]
 
 
-def carregar_atas_andamento() -> pd.DataFrame:
-    df = carregar_base_controle()
+def carregar_atas_andamento(df_base: pd.DataFrame) -> pd.DataFrame:
+    df = df_base.copy()
 
     # G:I => índices 6..8 (9ª coluna é índice 8)
-    # Se a planilha vier com menos colunas, não quebra: devolve vazio
     if df.shape[1] < 9:
         return pd.DataFrame(columns=["Atas em Andamento", "Situação", "Previsão para estar disponível"])
 
@@ -103,6 +102,106 @@ def carregar_atas_andamento() -> pd.DataFrame:
 
     cols = ["Atas em Andamento", "Situação", "Previsão para estar disponível"]
     return df[[c for c in cols if c in df.columns]]
+
+
+# --------------------------------------------------
+# Cache (memória + disco) + atualização automática
+# --------------------------------------------------
+CACHE_TTL_MINUTOS = 60  # 1h
+_CACHE_LOCK = threading.Lock()
+_CACHE_OBJ = None          # dict: {"vig": df, "and": df}
+_CACHE_AT = None
+
+_CACHE_DIR = os.path.join(
+    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
+    ".cache_atas",
+)
+os.makedirs(_CACHE_DIR, exist_ok=True)
+_CACHE_FILE = os.path.join(_CACHE_DIR, "atas_cache.pkl")
+_CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
+
+
+def _now_sp():
+    return datetime.now(timezone("America/Sao_Paulo"))
+
+
+def _fmt_dt(dt):
+    if not dt:
+        return "-"
+    try:
+        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _load_disk_cache():
+    try:
+        if not (os.path.exists(_CACHE_FILE) and os.path.exists(_CACHE_META)):
+            return None, None
+        with open(_CACHE_META, "rb") as f:
+            meta = pickle.load(f)
+        cached_at = meta.get("cached_at")
+        if not cached_at:
+            return None, None
+        cached_at_dt = datetime.fromisoformat(cached_at)
+        age = datetime.now() - cached_at_dt
+        if age > timedelta(minutes=CACHE_TTL_MINUTOS):
+            return None, None
+        obj = pd.read_pickle(_CACHE_FILE)
+        return obj, cached_at_dt
+    except Exception:
+        return None, None
+
+
+def _save_disk_cache(obj, cached_at: datetime):
+    try:
+        pd.to_pickle(obj, _CACHE_FILE)
+        with open(_CACHE_META, "wb") as f:
+            pickle.dump({"cached_at": cached_at.isoformat()}, f)
+    except Exception:
+        pass
+
+
+def get_atas_cache(force: bool = False):
+    """
+    Retorna (cache_obj, status_msg).
+    cache_obj: {"vig": df_atas_vigentes, "and": df_atas_andamento}
+    """
+    global _CACHE_OBJ, _CACHE_AT
+
+    now_naive = datetime.now()
+    stale = (
+        _CACHE_OBJ is None
+        or _CACHE_AT is None
+        or (now_naive - _CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+    )
+
+    if force or stale:
+        with _CACHE_LOCK:
+            now2 = datetime.now()
+            stale2 = (
+                _CACHE_OBJ is None
+                or _CACHE_AT is None
+                or (now2 - _CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+            )
+
+            if (not force) and stale2:
+                disk_obj, at_disk = _load_disk_cache()
+                if disk_obj is not None and at_disk is not None:
+                    _CACHE_OBJ = disk_obj
+                    _CACHE_AT = now2
+                    return _CACHE_OBJ, f"Dados carregados do cache em disco ({_fmt_dt(at_disk)})."
+
+            if force or stale2:
+                df_base = carregar_base_controle()
+                df_vig = carregar_atas_vigentes(df_base)
+                df_and = carregar_atas_andamento(df_base)
+                _CACHE_OBJ = {"vig": df_vig, "and": df_and}
+                _CACHE_AT = now2
+                _save_disk_cache(_CACHE_OBJ, now2)
+                return _CACHE_OBJ, f"Dados recarregados da planilha ({_fmt_dt(_now_sp())})."
+
+    return _CACHE_OBJ, f"Dados em cache (memória) — verificado em {_fmt_dt(_now_sp())}."
 
 
 # --------------------------------------------------
@@ -128,6 +227,17 @@ cell_style = {
 zebra_style = [{"if": {"row_index": "odd"}, "backgroundColor": "#f5f5f5"}]
 datatable_links_css = [{"selector": "p", "rule": "margin: 0; text-align: center;"}]
 
+botao_style = {
+    "backgroundColor": "#0b2b57",
+    "color": "white",
+    "padding": "8px 16px",
+    "border": "none",
+    "borderRadius": "4px",
+    "cursor": "pointer",
+    "fontSize": "12px",
+    "fontWeight": "bold",
+}
+
 
 # --------------------------------------------------
 # Layout
@@ -135,8 +245,24 @@ datatable_links_css = [{"selector": "p", "rule": "margin: 0; text-align: center;
 layout = html.Div(
     style={"padding": "10px"},
     children=[
-        # Atualiza ao abrir e a cada 10 minutos
-        dcc.Interval(id="atas_refresh", interval=600000, n_intervals=0),
+        dcc.Location(id="url"),
+        dcc.Store(id="store-reload-atas"),
+        dcc.Interval(id="interval-reload-atas", interval=60 * 60 * 1000, n_intervals=0),  # 1h
+
+        html.Div(
+            style={
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "center",
+                "gap": "10px",
+                "flexWrap": "wrap",
+                "marginBottom": "10px",
+            },
+            children=[
+                html.Button("Atualizar Dados", id="btn_reload_atas", n_clicks=0, style=botao_style),
+                html.Div(id="info-atualizacao-atas", style={"fontSize": "12px", "color": "#333"}),
+            ],
+        ),
 
         # Mostra erro de carregamento na tela (sem esconder)
         html.Div(id="atas_erro", style={"color": "crimson", "textAlign": "center", "marginBottom": "8px"}),
@@ -183,18 +309,37 @@ layout = html.Div(
 # Callbacks
 # --------------------------------------------------
 @callback(
+    Output("store-reload-atas", "data"),
+    Output("info-atualizacao-atas", "children"),
+    Input("url", "pathname"),
+    Input("interval-reload-atas", "n_intervals"),
+    Input("btn_reload_atas", "n_clicks"),
+)
+def controlar_reload(pathname, _n_intervals, n_clicks):
+    if pathname != "/atas":
+        raise PreventUpdate
+
+    force = bool(n_clicks) and n_clicks > 0
+    _, status = get_atas_cache(force=force)
+    msg = html.Div([html.B("Dados disponíveis. "), html.Span(status)])
+    return {"ts": datetime.now().isoformat()}, msg
+
+
+@callback(
     Output("tabela_atas_vigentes", "data"),
     Output("tabela_atas_andamento", "data"),
     Output("atas_erro", "children"),
-    Input("atas_refresh", "n_intervals"),
+    Input("store-reload-atas", "data"),
 )
-def atualizar_tabelas(_n):
+def atualizar_tabelas(_reload):
     try:
-        df_vig = carregar_atas_vigentes()
-        df_and = carregar_atas_andamento()
+        cache, _ = get_atas_cache(force=False)
+        if not cache:
+            return [], [], "Sem dados disponíveis no momento."
+        df_vig = cache.get("vig", pd.DataFrame())
+        df_and = cache.get("and", pd.DataFrame())
         return df_vig.to_dict("records"), df_and.to_dict("records"), ""
     except Exception as e:
-        # Mostra o erro na tela (e também imprime no log)
         msg = f"Erro ao carregar dados da planilha: {e}"
         print(f"[ATAS] {msg}")
         return [], [], msg

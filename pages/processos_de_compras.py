@@ -22,6 +22,8 @@ from plotly.subplots import make_subplots
 from datetime import datetime
 from pytz import timezone
 import os
+import time
+from pathlib import Path
 
 # --------------------------------------------------
 # Função para verificar se estamos na página de processos de compras
@@ -38,7 +40,8 @@ def verificar_pagina_processos_compras():
             'filtro_num_proc', 'filtro_ano_proc', 'filtro_mes_finalizacao',
             'filtro_solicitante_proc', 'filtro_objeto_proc', 'filtro_modalidade_proc',
             'filtro_status_proc', 'filtro_classif_nc_proc',
-            'btn_limpar_filtros_proc', 'btn_download_relatorio_proc'
+            'btn_limpar_filtros_proc', 'btn_download_relatorio_proc',
+            'btn-reload-proc', 'interval-reload-proc', 'store-reload-proc', 'info-atualizacao-proc'
         }
         
         # Obtém o ID do componente que disparou o callback
@@ -67,6 +70,68 @@ URL_PROCESSOS = (
     "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
     "gviz/tq?tqx=out:csv&sheet=BI%20-%20Itajub%C3%A1"
 )
+# --------------------------------------------------
+# Atualização / cache (mesma ideia do painel de execução)
+# --------------------------------------------------
+CACHE_DIR = Path(os.environ.get("PAINEL_DCF_CACHE_DIR", "/tmp/painel-dcf-cache"))
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_FILE = CACHE_DIR / "processos_de_compras.parquet"
+
+# cache em disco: 1h (ajuste se quiser)
+CACHE_TTL_SECONDS = int(os.environ.get("PROCESSOS_CACHE_TTL_SECONDS", "3600"))
+
+# cache em memória (pra não ficar lendo do disco a cada callback)
+_DF_MEM = None
+_DF_MEM_TS = 0.0
+
+def _cache_is_fresh(path: Path, ttl_seconds: int) -> bool:
+    try:
+        if not path.exists():
+            return False
+        age = time.time() - path.stat().st_mtime
+        return age < ttl_seconds
+    except Exception:
+        return False
+
+def get_df(force: bool = False):
+    """
+    Retorna (df, status_str).
+
+    - Sem force: usa cache (memória -> disco -> download).
+    - Com force: baixa novamente e atualiza cache.
+    """
+    global _DF_MEM, _DF_MEM_TS
+
+    now = time.time()
+
+    # 1) memória
+    if (not force) and (_DF_MEM is not None) and ((now - _DF_MEM_TS) < CACHE_TTL_SECONDS):
+        return _DF_MEM.copy(), f"cache em memória ({int(now - _DF_MEM_TS)}s)"
+
+    # 2) disco
+    if (not force) and _cache_is_fresh(CACHE_FILE, CACHE_TTL_SECONDS):
+        try:
+            df_disk = pd.read_parquet(CACHE_FILE)
+            _DF_MEM = df_disk
+            _DF_MEM_TS = now
+            age = int(now - CACHE_FILE.stat().st_mtime)
+            return df_disk.copy(), f"cache em disco ({age}s)"
+        except Exception:
+            # se o parquet falhar, ignora e baixa de novo
+            pass
+
+    # 3) download
+    df_new = carregar_dados_processos()
+    try:
+        df_new.to_parquet(CACHE_FILE, index=False)
+    except Exception:
+        # parquet depende de pyarrow/fastparquet; se não tiver, o app continua sem persistência
+        pass
+
+    _DF_MEM = df_new
+    _DF_MEM_TS = now
+    return df_new.copy(), "atualizado da planilha"
+
 
 # --------------------------------------------------
 # Carga de dados e utilitários
@@ -160,7 +225,7 @@ def carregar_dados_processos():
     return df
 
 
-df_proc_base = carregar_dados_processos()
+# df_proc_base é carregado via get_df() (cache)
 
 # Força ano padrão 2026
 ANO_PADRAO = 2026
@@ -221,6 +286,9 @@ MESES_ORDENADOS = [
 # --------------------------------------------------
 layout = html.Div(
     children=[
+        dcc.Location(id="url"),
+        dcc.Store(id="store-reload-proc"),
+        dcc.Interval(id="interval-reload-proc", interval=60*60*1000, n_intervals=0),
         # Barra de filtros
         html.Div(
             id="barra_filtros_proc",
@@ -264,18 +332,7 @@ layout = html.Div(
                                 html.Label("Ano"),
                                 dcc.Dropdown(
                                     id="filtro_ano_proc",
-                                    options=[
-                                        {
-                                            "label": str(a),
-                                            "value": a,
-                                        }
-                                        for a in sorted(
-                                            df_proc_base["Ano"]
-                                            .dropna()
-                                            .unique()
-                                        )
-                                        if str(a) != ""
-                                    ],
+                                    options=[{"label": str(ANO_PADRAO), "value": ANO_PADRAO}],
                                     value=ANO_PADRAO,
                                     clearable=False,
                                     style=dropdown_style,
@@ -433,6 +490,16 @@ layout = html.Div(
                                 "alignItems": "center",
                             },
                             children=[
+                                html.Div(
+                                    id="info-atualizacao-proc",
+                                    style={"fontSize": "12px", "color": "#333", "marginRight": "8px"},
+                                ),
+                                html.Button(
+                                    "Atualizar Dados",
+                                    id="btn-reload-proc",
+                                    n_clicks=0,
+                                    style=botao_style,
+                                ),
                                 html.Button(
                                     "Limpar Filtros",
                                     id="btn_limpar_filtros_proc",
@@ -574,6 +641,48 @@ layout = html.Div(
 )
 
 # ----------------------------------------
+# Callback: carregar/atualizar base (ao abrir a página, por intervalo, ou manualmente)
+# ----------------------------------------
+@dash.callback(
+    Output("store-reload-proc", "data"),
+    Output("info-atualizacao-proc", "children"),
+    Output("filtro_ano_proc", "options"),
+    Input("url", "pathname"),
+    Input("btn-reload-proc", "n_clicks"),
+    Input("interval-reload-proc", "n_intervals"),
+)
+def carregar_ao_abrir_ou_recarregar(pathname, n_reload, n_intervals):
+    if pathname != "/processos-de-compras":
+        raise PreventUpdate
+
+    # botão manual sempre força
+    force = bool(n_reload) and n_reload > 0
+
+    try:
+        df, status = get_df(force=force)
+
+        # opções de ano
+        anos = sorted([int(a) for a in pd.Series(df.get("Ano", pd.Series([], dtype=int))).dropna().unique().tolist() if str(a) != ""])
+        if not anos:
+            anos = [ANO_PADRAO]
+        ano_opts = [{"label": str(a), "value": a} for a in anos]
+
+        tz = timezone("America/Sao_Paulo")
+        agora = datetime.now(tz).strftime("%d/%m/%Y %H:%M:%S")
+        msg = html.Div(
+            [
+                html.B("Dados prontos. "),
+                html.Span(f"({agora}) "),
+                html.Span(status),
+            ]
+        )
+
+        return {"ts": datetime.now(tz).isoformat()}, msg, ano_opts
+    except Exception as e:
+        msg = html.Div([html.B("Falha ao carregar dados: "), html.Span(str(e))])
+        return {"ts": datetime.now().isoformat(), "erro": str(e)}, msg, [{"label": str(ANO_PADRAO), "value": ANO_PADRAO}]
+
+# ----------------------------------------
 # Callback: atualizar tabela + cards + gráficos
 # ----------------------------------------
 @dash.callback(
@@ -590,6 +699,7 @@ layout = html.Div(
     Input("filtro_modalidade_proc", "value"),
     Input("filtro_status_proc", "value"),
     Input("filtro_classif_nc_proc", "value"),
+    Input("store-reload-proc", "data"),
 )
 def atualizar_tabela_proc(
     num_proc,
@@ -600,6 +710,7 @@ def atualizar_tabela_proc(
     modalidade,
     status,
     classif_nc,
+    _reload,
 ):
     # VERIFICAÇÃO: Só executa se estiver na página de processos de compras
     if not verificar_pagina_processos_compras():
@@ -608,7 +719,8 @@ def atualizar_tabela_proc(
     # -------------------------
     # Filtro principal
     # -------------------------
-    dff = df_proc_base.copy()
+    df_base, _status = get_df(force=False)
+    dff = df_base.copy()
     mask = pd.Series(True, index=dff.index)
 
     # Filtro por número de processo (texto parcial)
@@ -817,7 +929,8 @@ def atualizar_tabela_proc(
         )
 
         # --- gráfico anual usa filtros exceto ano ---
-        dff_global = df_proc_base.copy()
+        df_base2, _status2 = get_df(force=False)
+        dff_global = df_base2.copy()
         mask_global = pd.Series(True, index=dff_global.index)
 
         if num_proc and str(num_proc).strip():
@@ -1000,6 +1113,7 @@ def atualizar_tabela_proc(
     Input("filtro_status_proc", "value"),
     Input("filtro_classif_nc_proc", "value"),
     Input("filtro_num_proc", "value"),
+    Input("store-reload-proc", "data"),
 )
 def atualizar_opcoes_filtros(
     ano,
@@ -1010,6 +1124,7 @@ def atualizar_opcoes_filtros(
     status,
     classif_nc,
     num_proc,
+    _reload,
 ):
     """
     Gera opções de dropdown em cascata a partir de um único filtro global.
@@ -1019,7 +1134,8 @@ def atualizar_opcoes_filtros(
     if not verificar_pagina_processos_compras():
         raise PreventUpdate
     
-    dff = df_proc_base.copy()
+    df_base, _status = get_df(force=False)
+    dff = df_base.copy()
     mask = pd.Series(True, index=dff.index)
 
     # Aplica todos os filtros

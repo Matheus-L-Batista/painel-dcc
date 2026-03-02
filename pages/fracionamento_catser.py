@@ -1,14 +1,15 @@
 import dash
 from dash import html, dcc, dash_table, Input, Output, State, no_update
+from dash.exceptions import PreventUpdate
 
 import pandas as pd
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pytz import timezone
 
 from io import BytesIO
 
-from reportlab.lib.pagesizes import portrait, A4  # Mudado de landscape para portrait
+from reportlab.lib.pagesizes import portrait, A4
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -20,14 +21,15 @@ from reportlab.platypus import (
 )
 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT  # Adicionado TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.lib import colors
 import os
+import threading
+import pickle
 
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
-
 dash.register_page(
     __name__,
     path="/fracionamento_catser",
@@ -38,7 +40,6 @@ dash.register_page(
 # --------------------------------------------------
 # URL da planilha
 # --------------------------------------------------
-
 URL_LIMITE_GASTO_ITA = (
     "https://docs.google.com/spreadsheets/d/"
     "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
@@ -49,16 +50,12 @@ COL_CATSER = "CATSER"
 COL_DESC_ORIG = "Descrição"
 COL_VALOR_EMPENHADO_ORIG = "Unnamed: 3"
 
-DATA_HOJE = date.today().strftime("%d/%m/%Y")
-
 # Limite da dispensa 2026
 VALOR_LIMITE_2026 = 65492.11
 
 # --------------------------------------------------
 # Carga e tratamento dos dados
 # --------------------------------------------------
-
-
 def carregar_dados_limite():
     df = pd.read_csv(URL_LIMITE_GASTO_ITA)
     df.columns = [c.strip() for c in df.columns]
@@ -84,35 +81,135 @@ def carregar_dados_limite():
             .str.replace(".", "", regex=False)
             .str.replace(",", ".", regex=False)
         )
-        df["Valor Empenhado"] = pd.to_numeric(
-            df["Valor Empenhado"], errors="coerce"
-        )
+        df["Valor Empenhado"] = pd.to_numeric(df["Valor Empenhado"], errors="coerce")
     else:
         df["Valor Empenhado"] = 0.0
 
     # Usa o limite de 2026
     valor_limite = VALOR_LIMITE_2026
     df["Limite da Dispensa"] = valor_limite
-    df["Saldo para contratação"] = (
-        df["Limite da Dispensa"] - df["Valor Empenhado"]
-    )
+    df["Saldo para contratação"] = df["Limite da Dispensa"] - df["Valor Empenhado"]
 
     df = df.rename(columns={COL_DESC_ORIG: "Descrição"})
 
     return df
 
 
-df_limite_base = carregar_dados_limite()
+# --------------------------------------------------
+# Cache (memória + disco) + atualização automática
+# --------------------------------------------------
+CACHE_TTL_MINUTOS = 60  # 1h
+_CACHE_LOCK = threading.Lock()
+_DF_CACHE = None
+_DF_CACHE_AT = None
 
-# NÃO considerar o CATSER 00000 na lista
-CATSERS_UNICOS = sorted(
-    c
-    for c in df_limite_base[COL_CATSER].dropna().unique()
-    if isinstance(c, str)
-    and c.strip() != ""
-    and c.strip() != "00000"  # exclui 00000
+_CACHE_DIR = os.path.join(
+    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
+    ".cache_catser"
 )
+os.makedirs(_CACHE_DIR, exist_ok=True)
+_CACHE_FILE = os.path.join(_CACHE_DIR, "df_catser.pkl")
+_CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
 
+
+def _now_sp():
+    return datetime.now(timezone("America/Sao_Paulo"))
+
+
+def _fmt_dt(dt):
+    if not dt:
+        return "-"
+    try:
+        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _load_disk_cache():
+    try:
+        if not (os.path.exists(_CACHE_FILE) and os.path.exists(_CACHE_META)):
+            return None, None
+        with open(_CACHE_META, "rb") as f:
+            meta = pickle.load(f)
+        cached_at = meta.get("cached_at")
+        if not cached_at:
+            return None, None
+        cached_at_dt = datetime.fromisoformat(cached_at)
+        age = datetime.now() - cached_at_dt
+        if age > timedelta(minutes=CACHE_TTL_MINUTOS):
+            return None, None
+        df = pd.read_pickle(_CACHE_FILE)
+        return df, cached_at_dt
+    except Exception:
+        return None, None
+
+
+def _save_disk_cache(df: pd.DataFrame, cached_at: datetime):
+    try:
+        df.to_pickle(_CACHE_FILE)
+        with open(_CACHE_META, "wb") as f:
+            pickle.dump({"cached_at": cached_at.isoformat()}, f)
+    except Exception:
+        pass
+
+
+def get_df_catser(force: bool = False):
+    """
+    Retorna (df, status_msg).
+    - Cache em memória (rápido)
+    - Se memória vazia, tenta disco
+    - Se TTL expirou ou force=True, lê da planilha
+    """
+    global _DF_CACHE, _DF_CACHE_AT
+
+    now_naive = datetime.now()
+    stale = (
+        _DF_CACHE is None
+        or _DF_CACHE_AT is None
+        or (now_naive - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+    )
+
+    if force or stale:
+        with _CACHE_LOCK:
+            now2 = datetime.now()
+            stale2 = (
+                _DF_CACHE is None
+                or _DF_CACHE_AT is None
+                or (now2 - _DF_CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+            )
+
+            if (not force) and stale2:
+                df_disk, at_disk = _load_disk_cache()
+                if df_disk is not None and at_disk is not None:
+                    _DF_CACHE = df_disk
+                    _DF_CACHE_AT = now2
+                    return _DF_CACHE, f"Dados carregados do cache em disco ({_fmt_dt(at_disk)})."
+
+            if force or stale2:
+                df = carregar_dados_limite()
+                _DF_CACHE = df
+                _DF_CACHE_AT = now2
+                _save_disk_cache(df, now2)
+                return _DF_CACHE, f"Dados recarregados da planilha ({_fmt_dt(_now_sp())})."
+
+    return _DF_CACHE, f"Dados em cache (memória) — verificado em {_fmt_dt(_now_sp())}."
+
+
+def catsers_unicos(df_base: pd.DataFrame):
+    if df_base is None or df_base.empty or COL_CATSER not in df_base.columns:
+        return []
+    return sorted(
+        c
+        for c in df_base[COL_CATSER].dropna().unique()
+        if isinstance(c, str)
+        and c.strip() != ""
+        and c.strip() != "00000"
+    )
+
+
+# --------------------------------------------------
+# Estilos
+# --------------------------------------------------
 dropdown_style = {
     "color": "black",
     "width": "100%",
@@ -120,10 +217,18 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
+botao_style = {
+    "backgroundColor": "#0b2b57",
+    "color": "white",
+    "border": "1px solid #0b2b57",
+    "borderRadius": "4px",
+    "padding": "6px 12px",
+    "cursor": "pointer",
+}
+
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
-
 layout = html.Div(
     style={
         "display": "flex",
@@ -136,7 +241,8 @@ layout = html.Div(
         ),
     },
     children=[
-        # Coluna esquerda
+        dcc.Location(id="url"),
+        # Coluna esquerda (texto)
         html.Div(
             id="coluna_esquerda_catser",
             style={
@@ -190,17 +296,12 @@ layout = html.Div(
                             "https://catalogo.compras.gov.br/cnbs-web/busca",
                             href="https://catalogo.compras.gov.br/cnbs-web/busca",
                             target="_blank",
-                            style={
-                                "color": "#1d4ed8",
-                                "textDecoration": "underline",
-                            },
+                            style={"color": "#1d4ed8", "textDecoration": "underline"},
                         ),
                         ", informar o número do CATSER. Exemplo para o CATSER 123456: a consulta "
                         "retornará os dados do serviço. Esse é o número que deverá ser considerado.",
                     ]
                 ),
-
-
                 html.Br(),
                 html.P("Exemplo para a necessidade de contratação de três itens:"),
                 html.P(
@@ -228,14 +329,10 @@ layout = html.Div(
                 ),
             ],
         ),
-        # Coluna direita
+        # Coluna direita (filtros + tabela)
         html.Div(
             id="coluna_direita_catser",
-            style={
-                "flex": "2 1 67%",
-                "padding": "5px",
-                "minWidth": "400px",
-            },
+            style={"flex": "2 1 67%", "padding": "5px", "minWidth": "400px"},
             children=[
                 html.Div(
                     id="barra_filtros_limite_itajuba",
@@ -265,10 +362,7 @@ layout = html.Div(
                                                 "Digite parte do CATSER, selecione na lista e, "
                                                 "após a seleção, apague o texto digitado."
                                             ),
-                                            style={
-                                                "width": "100%",
-                                                "marginBottom": "6px",
-                                            },
+                                            style={"width": "100%", "marginBottom": "6px"},
                                         ),
                                     ],
                                 ),
@@ -299,10 +393,7 @@ layout = html.Div(
                                         html.Label("CATSER (lista)"),
                                         dcc.Checklist(
                                             id="filtro_catser_dropdown_itajuba",
-                                            options=[
-                                                {"label": c, "value": c}
-                                                for c in CATSERS_UNICOS
-                                            ],
+                                            options=[],
                                             value=[],
                                             style={
                                                 "display": "flex",
@@ -321,7 +412,7 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Terceira linha: título + textos + cards + botões
+                        # Terceira linha: título + cards + botões
                         html.Div(
                             style={
                                 "marginTop": "8px",
@@ -356,10 +447,7 @@ layout = html.Div(
                                                     "o Saldo para Contratação."
                                                 ),
                                             ],
-                                            style={
-                                                "color": "red",
-                                                "fontSize": "12px",
-                                            },
+                                            style={"color": "red", "fontSize": "12px"},
                                         ),
                                     ],
                                 ),
@@ -395,7 +483,7 @@ layout = html.Div(
                                         ),
                                     ],
                                 ),
-                                # CARD DA DATA DA CONSULTA
+                                # CARD DA DATA DA CONSULTA (atualiza automaticamente)
                                 html.Div(
                                     style={
                                         "border": "1px solid #d1d5db",
@@ -417,7 +505,8 @@ layout = html.Div(
                                             },
                                         ),
                                         html.Div(
-                                            DATA_HOJE,
+                                            id="card_data_consulta_catser",
+                                            children=date.today().strftime("%d/%m/%Y"),
                                             style={
                                                 "fontSize": "16px",
                                                 "fontWeight": "bold",
@@ -427,7 +516,7 @@ layout = html.Div(
                                         ),
                                     ],
                                 ),
-                                # Botões
+                                # Botões + status
                                 html.Div(
                                     style={
                                         "display": "flex",
@@ -440,31 +529,24 @@ layout = html.Div(
                                             "Limpar filtros",
                                             id="btn_limpar_filtros_limite_itajuba",
                                             n_clicks=0,
-                                            style={
-                                                "backgroundColor": "#0b2b57",
-                                                "color": "white",
-                                                "border": "1px solid #0b2b57",
-                                                "borderRadius": "4px",
-                                                "padding": "6px 12px",
-                                                "cursor": "pointer",
-                                            },
+                                            style=botao_style,
+                                        ),
+                                        html.Button(
+                                            "Atualizar Dados",
+                                            id="btn_reload_catser",
+                                            n_clicks=0,
+                                            style=botao_style,
                                         ),
                                         html.Button(
                                             "Baixar Relatório PDF",
                                             id="btn_download_relatorio_limite_itajuba",
                                             n_clicks=0,
-                                            style={
-                                                "backgroundColor": "#0b2b57",
-                                                "color": "white",
-                                                "border": "1px solid #0b2b57",
-                                                "borderRadius": "4px",
-                                                "padding": "6px 12px",
-                                                "cursor": "pointer",
-                                                "marginLeft": "4px",
-                                            },
+                                            style=botao_style,
                                         ),
-                                        dcc.Download(
-                                            id="download_relatorio_limite_itajuba"
+                                        dcc.Download(id="download_relatorio_limite_itajuba"),
+                                        html.Div(
+                                            id="info-atualizacao-catser",
+                                            style={"fontSize": "12px", "color": "#333"},
                                         ),
                                     ],
                                 ),
@@ -477,21 +559,12 @@ layout = html.Div(
                     columns=[
                         {"name": "CATSER", "id": COL_CATSER},
                         {"name": "Descrição", "id": "Descrição"},
-                        {
-                            "name": "Valor Empenhado (R$)",
-                            "id": "Valor Empenhado_fmt",
-                        },
-                        {
-                            "name": "Limite da Dispensa (R$)",
-                            "id": "Limite da Dispensa_fmt",
-                        },
-                        {
-                            "name": "Saldo para contratação (R$)",
-                            "id": "Saldo para contratação_fmt",
-                        },
+                        {"name": "Valor Empenhado (R$)", "id": "Valor Empenhado_fmt"},
+                        {"name": "Limite da Dispensa (R$)", "id": "Limite da Dispensa_fmt"},
+                        {"name": "Saldo para contratação (R$)", "id": "Saldo para contratação_fmt"},
                     ],
                     data=[],
-                    page_action='none',  # DESATIVA PAGINAÇÃO - TODAS AS LINHAS EM UMA PÁGINA
+                    page_action="none",
                     row_selectable=False,
                     cell_selectable=False,
                     style_table={
@@ -519,70 +592,102 @@ layout = html.Div(
                         "zIndex": 5,
                     },
                     style_data_conditional=[
-                        # zebra: linhas ímpares em cinza-claro
+                        {"if": {"row_index": "odd"}, "backgroundColor": "#f5f5f5"},
                         {
-                            "if": {"row_index": "odd"},
-                            "backgroundColor": "#f5f5f5",
-                        },
-                        # saldo <= 0 continua sobrescrevendo a cor da linha
-                        {
-                            "if": {
-                                "filter_query": "{Saldo para contratação} <= 0",
-                            },
+                            "if": {"filter_query": "{Saldo para contratação} <= 0"},
                             "backgroundColor": "#ffcccc",
                             "color": "#cc0000",
                         },
                     ],
                 ),
                 dcc.Store(id="store_dados_limite_itajuba"),
+                dcc.Store(id="store-reload-catser"),
+                dcc.Interval(id="interval-reload-catser", interval=60 * 60 * 1000, n_intervals=0),  # 1h
             ],
         ),
     ],
 )
 
 # --------------------------------------------------
-# Callbacks
+# Callback: abrir página / interval / botão (recarrega cache + atualiza lista CATSER + status)
 # --------------------------------------------------
-
-
 @dash.callback(
+    Output("store-reload-catser", "data"),
+    Output("info-atualizacao-catser", "children"),
     Output("filtro_catser_dropdown_itajuba", "options"),
-    Input("filtro_catser_texto_itajuba", "value"),
+    Output("card_data_consulta_catser", "children"),
+    Input("url", "pathname"),
+    Input("interval-reload-catser", "n_intervals"),
+    Input("btn_reload_catser", "n_clicks"),
     State("filtro_catser_dropdown_itajuba", "value"),
 )
-def atualizar_opcoes_catser(catser_texto, valores_selecionados):
-    base = CATSERS_UNICOS
+def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks, selecionados):
+    if pathname != "/fracionamento_catser":
+        raise PreventUpdate
+
+    force = bool(n_clicks) and n_clicks > 0
+    df, status = get_df_catser(force=force)
+
+    base = catsers_unicos(df)
+    # mantém selecionados que ainda existirem
+    selecionados = selecionados or []
+    selecionados_validos = [v for v in selecionados if v in base]
+
+    opcoes = [{"label": c, "value": c} for c in base]
+
+    msg = html.Div([html.B("Dados disponíveis. "), html.Span(status)])
+    data_consulta = _now_sp().strftime("%d/%m/%Y")
+    return {"ts": datetime.now().isoformat(), "sel": selecionados_validos}, msg, opcoes, data_consulta
+
+
+# --------------------------------------------------
+# Callback: filtra opções da checklist via texto (mantém selecionados)
+# --------------------------------------------------
+@dash.callback(
+    Output("filtro_catser_dropdown_itajuba", "options", allow_duplicate=True),
+    Input("filtro_catser_texto_itajuba", "value"),
+    Input("store-reload-catser", "data"),
+    State("filtro_catser_dropdown_itajuba", "value"),
+    prevent_initial_call=True,
+)
+def atualizar_opcoes_catser(catser_texto, _reload, valores_selecionados):
+    df, _ = get_df_catser(force=False)
+    base = catsers_unicos(df)
 
     if not catser_texto or not str(catser_texto).strip():
-        opcoes = [{"label": c, "value": c} for c in base]
+        filtradas = base
     else:
         termo = str(catser_texto).strip().lower()
         filtradas = [c for c in base if termo in str(c).lower()]
 
-        if valores_selecionados:
-            for v in valores_selecionados:
-                if v in base and v not in filtradas:
-                    filtradas.append(v)
+    # garante selecionados na lista de opções
+    valores_selecionados = valores_selecionados or []
+    for v in valores_selecionados:
+        if v in base and v not in filtradas:
+            filtradas.append(v)
 
-        opcoes = [
-            {"label": c, "value": c} for c in sorted(filtradas)
-        ]
-
-    return opcoes
+    return [{"label": c, "value": c} for c in sorted(filtradas)]
 
 
+# --------------------------------------------------
+# Callback: atualiza tabela (agora reage ao reload também)
+# --------------------------------------------------
 @dash.callback(
     Output("tabela_limite_itajuba", "data"),
     Output("store_dados_limite_itajuba", "data"),
+    Input("store-reload-catser", "data"),
     Input("filtro_catser_dropdown_itajuba", "value"),
 )
-def atualizar_tabela_limite_itajuba(catser_lista):
-    dff = df_limite_base.copy()
+def atualizar_tabela_limite_itajuba(_reload, catser_lista):
+    df_base, _ = get_df_catser(force=False)
+    dff = df_base.copy() if df_base is not None else pd.DataFrame()
 
-    # Remove sempre o CATSER 00000 da tabela
+    if dff.empty:
+        return [], []
+
+    # Remove sempre o CATSER 00000
     dff = dff[dff[COL_CATSER] != "00000"]
 
-    # Filtro SOMENTE pela checklist
     if catser_lista:
         dff = dff[dff[COL_CATSER].isin(catser_lista)]
 
@@ -603,26 +708,17 @@ def atualizar_tabela_limite_itajuba(catser_lista):
     def fmt_moeda(v):
         if pd.isna(v):
             return ""
-        return "R$ " + (
-            f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
+        return "R$ " + (f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
-    dff_display["Valor Empenhado_fmt"] = dff_display[
-        "Valor Empenhado"
-    ].apply(fmt_moeda)
-    dff_display["Limite da Dispensa_fmt"] = dff_display[
-        "Limite da Dispensa"
-    ].apply(fmt_moeda)
-    dff_display["Saldo para contratação_fmt"] = dff_display[
-        "Saldo para contratação"
-    ].apply(fmt_moeda)
+    dff_display["Valor Empenhado_fmt"] = dff_display["Valor Empenhado"].apply(fmt_moeda)
+    dff_display["Limite da Dispensa_fmt"] = dff_display["Limite da Dispensa"].apply(fmt_moeda)
+    dff_display["Saldo para contratação_fmt"] = dff_display["Saldo para contratação"].apply(fmt_moeda)
 
     cols_tabela_display = [
         COL_CATSER,
         "Descrição",
         "Valor Empenhado_fmt",
         "Limite da Dispensa_fmt",
-        "Saldo para contratação",
         "Saldo para contratação_fmt",
     ]
 
@@ -638,16 +734,16 @@ def atualizar_tabela_limite_itajuba(catser_lista):
     Input("btn_limpar_filtros_limite_itajuba", "n_clicks"),
     prevent_initial_call=True,
 )
-def limpar_filtros_limite_itajuba(n):
+def limpar_filtros_limite_itajuba(_n):
     return None, []
+
 
 # --------------------------------------------------
 # PDF
 # --------------------------------------------------
-
 wrap_style_data = ParagraphStyle(
     name="wrap_limite_itajuba_data",
-    fontSize=7,  # Reduzido para melhor ajuste no modo retrato
+    fontSize=7,
     leading=9,
     alignment=TA_CENTER,
     textColor=colors.black,
@@ -655,7 +751,7 @@ wrap_style_data = ParagraphStyle(
 
 wrap_style_header = ParagraphStyle(
     name="wrap_limite_itajuba_header",
-    fontSize=7,  # Reduzido para melhor ajuste no modo retrato
+    fontSize=7,
     leading=9,
     alignment=TA_CENTER,
     textColor=colors.white,
@@ -665,7 +761,7 @@ wrap_style_desc = ParagraphStyle(
     name="wrap_limite_itajuba_desc",
     fontSize=7,
     leading=9,
-    alignment=TA_LEFT,  # Alinhamento à esquerda para a descrição
+    alignment=TA_LEFT,
     textColor=colors.black,
 )
 
@@ -695,10 +791,11 @@ def gerar_pdf_limite_itajuba(n, dados):
     df = pd.DataFrame(dados)
 
     # Garante também no PDF que o CATSER 00000 não apareça
-    df = df[df[COL_CATSER] != "00000"]
+    if COL_CATSER in df.columns:
+        df = df[df[COL_CATSER] != "00000"]
 
     buffer = BytesIO()
-    pagesize = portrait(A4)  # Mudado para retrato
+    pagesize = portrait(A4)
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
@@ -711,43 +808,29 @@ def gerar_pdf_limite_itajuba(n, dados):
     styles = getSampleStyleSheet()
     story = []
 
-    # Data / Hora
     tz_brasilia = timezone("America/Sao_Paulo")
     data_hora = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
 
     story.append(
         Table(
-            [
-                [
-                    Paragraph(
-                        data_hora,
-                        ParagraphStyle(
-                            "data_topo",
-                            fontSize=9,
-                            alignment=TA_RIGHT,
-                            textColor="#333333",
-                        ),
-                    )
-                ]
-            ],
+            [[Paragraph(
+                data_hora,
+                ParagraphStyle("data_topo", fontSize=9, alignment=TA_RIGHT, textColor="#333333"),
+            )]],
             colWidths=[pagesize[0] - 0.6 * inch],
         )
     )
-
     story.append(Spacer(1, 0.15 * inch))
 
-    # Cabeçalho: Logo | Texto | Logo
     logo_esq = (
-        Image("assets/brasaobrasil.png", 1.0 * inch, 1.0 * inch)  # Reduzido para melhor ajuste
-        if os.path.exists("assets/brasaobrasil.png")
-        else ""
+        Image("assets/brasaobrasil.png", 1.0 * inch, 1.0 * inch)
+        if os.path.exists("assets/brasaobrasil.png") else ""
+    )
+    logo_dir = (
+        Image("assets/simbolo_RGB.png", 1.0 * inch, 1.0 * inch)
+        if os.path.exists("assets/simbolo_RGB.png") else ""
     )
 
-    logo_dir = (
-        Image("assets/simbolo_RGB.png", 1.0 * inch, 1.0 * inch)  # Reduzido para melhor ajuste
-        if os.path.exists("assets/simbolo_RGB.png")
-        else ""
-    )
     texto_instituicao = (
         "<b><font color='#0b2b57' size=12>Ministério da Educação</font></b><br/>"
         "<b><font color='#0b2b57' size=12>Universidade Federal de Itajubá</font></b><br/>"
@@ -756,63 +839,35 @@ def gerar_pdf_limite_itajuba(n, dados):
 
     instituicao = Paragraph(
         texto_instituicao,
-        ParagraphStyle(
-            "instituicao",
-            alignment=TA_CENTER,
-            leading=14,
-        ),
+        ParagraphStyle("instituicao", alignment=TA_CENTER, leading=14),
     )
 
     cabecalho = Table(
         [[logo_esq, instituicao, logo_dir]],
-        colWidths=[1.2 * inch, 3.5 * inch, 1.2 * inch],  # Ajustado para retrato
+        colWidths=[1.2 * inch, 3.5 * inch, 1.2 * inch],
     )
-
     cabecalho.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
+        TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ])
     )
 
     story.append(cabecalho)
     story.append(Spacer(1, 0.25 * inch))
 
-    # Título
     titulo = Paragraph(
-        "Consulta ao Fracionamento de Despesa 2026 - CATSER (Serviço): "
-        "UASG: 153030 - Campus Itajubá",
-        ParagraphStyle(
-            "titulo",
-            alignment=TA_CENTER,
-            fontSize=10,
-            leading=14,
-            textColor=colors.black,
-        ),
+        "Consulta ao Fracionamento de Despesa 2026 - CATSER (Serviço): UASG: 153030 - Campus Itajubá",
+        ParagraphStyle("titulo", alignment=TA_CENTER, fontSize=10, leading=14, textColor=colors.black),
     )
-
     story.append(titulo)
     story.append(Spacer(1, 0.2 * inch))
-
-    story.append(
-        Paragraph(f"Total de registros: {len(df)}", styles["Normal"])
-    )
-
+    story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
     story.append(Spacer(1, 0.15 * inch))
 
-    # Tabela
-    cols = [
-        COL_CATSER,
-        "Descrição",
-        "Valor Empenhado",
-        "Limite da Dispensa",
-        "Saldo para contratação",
-    ]
-
+    cols = [COL_CATSER, "Descrição", "Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]
     for c in cols:
         if c not in df.columns:
             df[c] = ""
@@ -820,9 +875,7 @@ def gerar_pdf_limite_itajuba(n, dados):
     def fmt_moeda(v):
         if pd.isna(v):
             return ""
-        return "R$ " + (
-            f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
+        return "R$ " + (f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
     df_pdf = df.copy()
     for c in cols[2:]:
@@ -831,28 +884,23 @@ def gerar_pdf_limite_itajuba(n, dados):
     header = [wrap_header(c) for c in cols]
     table_data = [header]
 
-    saldo_values = df["Saldo para contratação"].fillna(0).tolist()
+    saldo_values = df["Saldo para contratação"].fillna(0).tolist() if "Saldo para contratação" in df.columns else [0]*len(df)
 
     for _, row in df_pdf[cols].iterrows():
-        # Trata cada coluna separadamente
         row_data = []
         for i, c in enumerate(cols):
-            if i == 1:  # Coluna Descrição - alinhamento à esquerda
+            if i == 1:
                 row_data.append(wrap_desc(row[c]))
-            elif i == 0:  # CATSER - alinhamento ao centro
-                row_data.append(wrap_data(row[c]))
-            else:  # Colunas numéricas - alinhamento ao centro
+            else:
                 row_data.append(wrap_data(row[c]))
         table_data.append(row_data)
 
-    page_width = pagesize[0] - 0.6 * inch
-    # Ajuste das larguras das colunas para modo retrato
     col_widths = [
         0.8 * inch,  # CATSER
-        2.5 * inch,  # Descrição (mais larga)
+        2.5 * inch,  # Descrição
         1.0 * inch,  # Valor Empenhado
         1.0 * inch,  # Limite da Dispensa
-        1.0 * inch,  # Saldo para contratação
+        1.0 * inch,  # Saldo
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -864,40 +912,18 @@ def gerar_pdf_limite_itajuba(n, dados):
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
-        # Descrição alinhada à esquerda
         ("ALIGN", (1, 1), (1, -1), "LEFT"),
-        # Linhas alternadas: branca e cinza-claro (a partir da linha 1)
-        (
-            "ROWBACKGROUNDS",
-            (0, 1),
-            (-1, -1),
-            [colors.white, colors.whitesmoke],
-        ),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
     ]
 
-    # Linhas com saldo <= 0 em vermelho
     for i, saldo in enumerate(saldo_values, 1):
         if saldo <= 0:
-            table_styles.append(
-                (
-                    "BACKGROUND",
-                    (0, i),
-                    (-1, i),
-                    colors.HexColor("#ffcccc"),
-                )
-            )
-            table_styles.append(
-                (
-                    "TEXTCOLOR",
-                    (0, i),
-                    (-1, i),
-                    colors.HexColor("#cc0000"),
-                )
-            )
+            table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffcccc")))
+            table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.HexColor("#cc0000")))
 
     tbl.setStyle(TableStyle(table_styles))
-
     story.append(tbl)
+
     doc.build(story)
     buffer.seek(0)
 

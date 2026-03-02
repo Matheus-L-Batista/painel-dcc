@@ -33,6 +33,93 @@ URL_BI_EXTRATO = (
     "gviz/tq?tqx=out:csv&sheet=BI%20Extrato"
 )
 
+
+# ==========================================================
+# Atualização automática (cache + refresh manual/automático)
+# ==========================================================
+import time
+import tempfile
+import json
+
+CACHE_DIR = os.path.join(tempfile.gettempdir(), "painel_dcf_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+CACHE_TTL_SECONDS = 60 * 60  # 1 hora
+
+_cache_mem = {"df": None, "loaded_at": 0.0, "status": "Ainda não carregado."}
+
+def _now_str_br():
+    tz_brasilia = timezone("America/Sao_Paulo")
+    return datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
+
+def _cache_paths():
+    return (
+        os.path.join(CACHE_DIR, "extrato_contrato.parquet"),
+        os.path.join(CACHE_DIR, "extrato_contrato_meta.json"),
+    )
+
+def _read_cache_disk():
+    pq_path, meta_path = _cache_paths()
+    if not (os.path.exists(pq_path) and os.path.exists(meta_path)):
+        return None, None
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        df = pd.read_parquet(pq_path)
+        return df, meta
+    except Exception:
+        return None, None
+
+def _write_cache_disk(df):
+    pq_path, meta_path = _cache_paths()
+    meta = {"saved_at": time.time(), "saved_at_str": _now_str_br()}
+    try:
+        df.to_parquet(pq_path, index=False)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+    except Exception:
+        # se falhar, segue sem cache em disco
+        pass
+    return meta
+
+def get_df(force=False):
+    """Retorna (df, status). Usa cache em memória + disco com TTL de 1h."""
+    now = time.time()
+
+    # 1) Memória
+    if (not force) and _cache_mem["df"] is not None and (now - _cache_mem["loaded_at"] <= CACHE_TTL_SECONDS):
+        status = f"Cache (memória) — atualizado em {_cache_mem.get('status_time','?')}"
+        return _cache_mem["df"], status
+
+    # 2) Disco
+    if not force:
+        df_disk, meta = _read_cache_disk()
+        if df_disk is not None and meta and (now - float(meta.get("saved_at", 0)) <= CACHE_TTL_SECONDS):
+            _cache_mem["df"] = df_disk
+            _cache_mem["loaded_at"] = float(meta.get("saved_at", now))
+            _cache_mem["status_time"] = meta.get("saved_at_str", "?")
+            status = f"Cache (disco) — atualizado em {_cache_mem['status_time']}"
+            return df_disk, status
+
+    # 3) Fonte (Google Sheets)
+    df = carregar_dados_extrato()
+    meta = _write_cache_disk(df)
+
+    _cache_mem["df"] = df
+    _cache_mem["loaded_at"] = now
+    _cache_mem["status_time"] = (meta or {}).get("saved_at_str", _now_str_br())
+
+    status = f"Fonte (Google Sheets) — atualizado em {_cache_mem['status_time']}"
+    return df, status
+
+def _safe_unique_sorted(df, col):
+    if df is None or df.empty or col not in df.columns:
+        return []
+    vals = df[col].dropna().astype(str).unique().tolist()
+    vals = [v for v in vals if v.strip() != ""]
+    return sorted(vals)
+
+
 button_style = {
     "backgroundColor": "#0b2b57",
     "color": "white",
@@ -231,8 +318,7 @@ def carregar_dados_extrato():
     
     return df
 
-df_extrato_base = carregar_dados_extrato()
-
+df_extrato_base = pd.DataFrame()  # carregado via get_df()
 # ===== DEFINIÇÃO DAS COLUNAS =====
 cols_contrato_info = [
     "Processo", "Modalidade", "Vigência - de", "Vigência - até", 
@@ -313,10 +399,7 @@ layout = html.Div(
                                 html.Label("Contrato", style={"fontWeight": "bold", "marginBottom": "5px"}),
                                 dcc.Dropdown(
                                     id="filtro_contrato_extrato",
-                                    options=[
-                                        {"label": str(contrato), "value": str(contrato)}
-                                        for contrato in sorted(df_extrato_base["Contrato"].dropna().unique())
-                                    ],
+                                    options=[],
                                     placeholder="Selecione um contrato...",
                                     clearable=True,
                                     style={"width": "100%"},
@@ -331,11 +414,7 @@ layout = html.Div(
                                 html.Label("Contratada", style={"fontWeight": "bold", "marginBottom": "5px"}),
                                 dcc.Dropdown(
                                     id="filtro_contratada_extrato",
-                                    options=[
-                                        {"label": str(contratada)[:100] + "..." if len(str(contratada)) > 100 else str(contratada), 
-                                         "value": str(contratada)}
-                                        for contratada in sorted(df_extrato_base["Contratada"].dropna().unique())
-                                    ],
+                                    options=[],
                                     placeholder="Busque pela empresa contratada...",
                                     clearable=True,
                                     style={"width": "100%"},
@@ -364,6 +443,13 @@ layout = html.Div(
                                     n_clicks=0,
                                     style={**button_style, "marginRight": "10px"},
                                 ),
+
+html.Button(
+    "Atualizar dados",
+    id="btn-reload-extrato",
+    n_clicks=0,
+    style={**button_style, "marginRight": "10px"},
+),
                                 html.Button(
                                     "Baixar Relatório PDF",
                                     id="btn_download_relatorio_extrato",
@@ -374,12 +460,24 @@ layout = html.Div(
                             ],
                         ),
                         html.Div(
-                            id="info_filtros",
-                            style={
-                                "fontSize": "12px",
-                                "color": "#666",
-                                "fontStyle": "italic",
-                            },
+                            children=[
+                                html.Div(
+                                    id="info_filtros",
+                                    style={
+                                        "fontSize": "12px",
+                                        "color": "#666",
+                                        "fontStyle": "italic",
+                                    },
+                                ),
+                                html.Div(
+                                    id="info-atualizacao-extrato",
+                                    style={
+                                        "fontSize": "12px",
+                                        "color": "#666",
+                                        "marginTop": "4px",
+                                    },
+                                ),
+                            ]
                         ),
                     ],
                 ),
@@ -765,6 +863,8 @@ layout = html.Div(
                 ),
 
                 dcc.Store(id="store_dados_extrato"),
+                dcc.Store(id="store-reload-extrato"),
+                dcc.Interval(id="interval-auto-reload-extrato", interval=60*60*1000, n_intervals=0),
             ],
         ),
     ]
@@ -1331,15 +1431,55 @@ def gerar_pdf_relatorio_extrato(
     return buffer
 
 # ===== CALLBACKS =====
+
+
+@callback(
+    Output("store-reload-extrato", "data"),
+    Output("info-atualizacao-extrato", "children"),
+    Input("url", "pathname"),
+    Input("btn-reload-extrato", "n_clicks"),
+    Input("interval-auto-reload-extrato", "n_intervals"),
+)
+def carregar_ao_abrir_ou_recarregar_extrato(pathname, n_clicks, n_intervals):
+    if pathname != "/extrato-contrato":
+        raise dash.exceptions.PreventUpdate
+
+    force = (bool(n_clicks) and n_clicks > 0) or (bool(n_intervals) and n_intervals > 0)
+
+    try:
+        df, status = get_df(force=force)
+
+        # Atualiza base global (compatibilidade com callbacks antigos)
+        global df_extrato_base
+        df_extrato_base = df
+
+        opcoes_contrato = [{"label": c, "value": c} for c in _safe_unique_sorted(df, "Contrato")]
+        # Contratada: label truncado, value completo
+        opcoes_contratada = []
+        for contratada in _safe_unique_sorted(df, "Contratada"):
+            label = contratada[:100] + "." if len(contratada) > 100 else contratada
+            opcoes_contratada.append({"label": label, "value": contratada})
+
+        info = html.Div([html.B("Dados disponíveis. "), html.Span(status)])
+        return {"ts": datetime.now().isoformat()}, info
+
+    except Exception as e:
+        info = html.Div([html.B("Falha ao carregar dados: "), html.Span(str(e))], style={"color": "crimson"})
+        return dash.no_update, info
+
 @callback(
     Output("filtro_contrato_extrato", "options"),
     Output("filtro_contratada_extrato", "options"),
+    Input("store-reload-extrato", "data"),
     Input("filtro_contrato_extrato", "value"),
     Input("filtro_contratada_extrato", "value"),
 )
-def atualizar_filtros_cascata(contrato_selecionado, contratada_selecionada):
+def atualizar_filtros_cascata(_reload, contrato_selecionado, contratada_selecionada):
     """Atualiza os filtros em cascata"""
-    df_filtrado = df_extrato_base.copy()
+    df_base, _ = get_df(force=False)
+    if df_base is None or df_base.empty:
+        return [], []
+    df_filtrado = df_base.copy()
     
     # Aplicar filtros em cascata
     if contrato_selecionado:
@@ -1393,17 +1533,19 @@ def atualizar_info_filtros(contrato, contratada):
     Output("valor_original_label", "children"),
     Output("tabela_extrato_comprasnet", "data"),
     Output("valor_numero_contrato", "children"),
+    Input("store-reload-extrato", "data"),
     Input("filtro_contrato_extrato", "value"),
     Input("filtro_contratada_extrato", "value"),
 )
-def atualizar_tabelas_extrato_cb(contrato, contratada):
+def atualizar_tabelas_extrato_cb(_reload, contrato, contratada):
     """Callback principal: atualiza todas as tabelas ao filtrar"""
     # Se não houver nenhum filtro selecionado, limpar tudo
     if not contrato and not contratada:
         return [], [], [], [], [], [], [], "", [], ""
     
     # Aplicar filtros
-    dff = df_extrato_base.copy()
+    df_base, _ = get_df(force=False)
+    dff = df_base.copy()
     
     if contrato:
         dff = dff[dff["Contrato"] == contrato]
@@ -1583,7 +1725,8 @@ def download_relatorio_pdf(n_clicks, filtro_contrato, filtro_contratada):
         return dash.no_update
     
     # Aplicar os mesmos filtros usados na visualização
-    dff = df_extrato_base.copy()
+    df_base, _ = get_df(force=False)
+    dff = df_base.copy()
     
     if filtro_contrato:
         dff = dff[dff["Contrato"] == filtro_contrato]
