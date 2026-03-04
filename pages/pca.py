@@ -23,6 +23,7 @@ from pytz import timezone
 import os
 import threading
 import pickle
+import re
 
 
 dash.register_page(
@@ -84,6 +85,24 @@ def formatar_moeda(v):
         return ""
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+
+
+def normalizar_item(v):
+    """Normaliza Item para inteiro quando possível, sem quebrar com valores sujos."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    s = str(v).strip()
+    if s == "" or s.lower() == "nan":
+        return ""
+    # tenta extrair número (ex.: '1', '1.0', ' 2 ')
+    try:
+        n = pd.to_numeric(s, errors="raise")
+        if pd.isna(n):
+            return ""
+        return str(int(float(n)))
+    except Exception:
+        # mantém texto original (melhor do que derrubar o callback)
+        return s
 
 # --------------------------------------------------
 # Carga e tratamento de dados
@@ -161,8 +180,9 @@ def _build_derivados(df_pca_base: pd.DataFrame):
         df_planejamento["Planejado"] - df_planejamento["Saldo"]
     )
 
-    # Tabela 2: Processos (explodindo colunas)
-    cols_grupo0 = [
+    # Tabela 2: Processos (normalizando colunas com sufixos .N sem forçar 1..31)
+    # Identifica quais sufixos realmente existem no arquivo ('' e '.N')
+    base_id_cols = [
         "Ano",
         "Área requisitante",
         "Material ou Serviço",
@@ -170,63 +190,38 @@ def _build_derivados(df_pca_base: pd.DataFrame):
         "Item",
         "Valor Total",
         "Saldo",
-        "Processo",
-        "Observações",
-        "Objeto",
-        "SRP ou Outro Valor",
-        "Valor",
     ]
-
-    for c in cols_grupo0:
+    for c in base_id_cols:
         if c not in df_pca_base.columns:
             df_pca_base[c] = None
 
-    grupo0 = df_pca_base[cols_grupo0].copy()
+    proc_fields = ["Processo", "Observações", "Objeto", "SRP ou Outro Valor", "Valor"]
 
-    def gerar_grupo(indice: int) -> pd.DataFrame:
-        suf = f".{indice}"
-        col_processo = f"Processo{suf}"
-        col_observ = f"Observações{suf}"
-        col_objeto = f"Objeto{suf}"
-        col_srp = f"SRP ou Outro Valor{suf}"
-        col_valor = f"Valor{suf}"
+    # Coleta sufixos existentes a partir das colunas presentes
+    sufixos = set([""])
+    rx = re.compile(r"^(Processo|Observações|Objeto|SRP ou Outro Valor|Valor)(\.\d+)?$")
+    for col in df_pca_base.columns:
+        m = rx.match(col)
+        if m:
+            suf = m.group(2) or ""
+            sufixos.add(suf)
 
-        colunas_originais = [
-            "Ano",
-            "Área requisitante",
-            "Material ou Serviço",
-            "DFD",
-            "Item",
-            "Valor Total",
-            "Saldo",
-            col_processo,
-            col_observ,
-            col_objeto,
-            col_srp,
-            col_valor,
-        ]
-
-        for c in colunas_originais:
+    # Monta tabelas apenas para sufixos existentes
+    tabelas = []
+    for suf in sorted(sufixos, key=lambda s: (0 if s == "" else int(s[1:]))):
+        cols = base_id_cols + [f"{f}{suf}" for f in proc_fields]
+        for c in cols:
             if c not in df_pca_base.columns:
                 df_pca_base[c] = None
 
-        tabela_sel = df_pca_base[colunas_originais].copy()
-        tabela_ren = tabela_sel.rename(
-            columns={
-                col_processo: "Processo",
-                col_observ: "Observações",
-                col_objeto: "Objeto",
-                col_srp: "SRP ou Outro Valor",
-                col_valor: "Valor",
-            }
-        )
-        return tabela_ren
+        sel = df_pca_base[cols].copy()
+        ren = {f"{f}{suf}": f for f in proc_fields}
+        sel = sel.rename(columns=ren)
+        tabelas.append(sel)
 
-    grupos_dinamicos = [gerar_grupo(i) for i in range(1, 32)]
-    tabela_processos_unida = pd.concat(
-        [grupo0] + grupos_dinamicos, ignore_index=True
-    )
+    tabela_processos_unida = pd.concat(tabelas, ignore_index=True) if tabelas else pd.DataFrame(columns=base_id_cols + proc_fields)
 
+    # Normalizações de tipo
     for c in [
         "Área requisitante",
         "Material ou Serviço",
@@ -236,11 +231,11 @@ def _build_derivados(df_pca_base: pd.DataFrame):
         "Observações",
         "Objeto",
     ]:
-        tabela_processos_unida[c] = tabela_processos_unida[c].astype("string")
+        if c in tabela_processos_unida.columns:
+            tabela_processos_unida[c] = tabela_processos_unida[c].astype("string")
 
-    tabela_processos_unida["Valor"] = tabela_processos_unida["Valor"].apply(
-        conv_moeda_br
-    )
+    if "Valor" in tabela_processos_unida.columns:
+        tabela_processos_unida["Valor"] = tabela_processos_unida["Valor"].apply(conv_moeda_br)
 
     return df_planejamento, tabela_processos_unida
 
@@ -275,23 +270,36 @@ def _fmt_dt(dt):
         return dt.strftime("%d/%m/%Y %H:%M:%S")
 
 
-def _load_disk_cache():
+def _load_disk_cache(allow_stale: bool = False):
+    """
+    Retorna (obj, cached_at_dt, is_stale).
+    Se allow_stale=True, retorna também cache expirado (melhor do que tela vazia).
+    """
     try:
         if not (os.path.exists(_CACHE_FILE) and os.path.exists(_CACHE_META)):
-            return None, None
+            return None, None, False
+
         with open(_CACHE_META, "rb") as f:
             meta = pickle.load(f)
+
         cached_at = meta.get("cached_at")
         if not cached_at:
-            return None, None
+            return None, None, False
+
         cached_at_dt = datetime.fromisoformat(cached_at)
-        age = datetime.now() - cached_at_dt
-        if age > timedelta(minutes=CACHE_TTL_MINUTOS):
-            return None, None
+        # garante timezone coerente
+        if cached_at_dt.tzinfo is None:
+            cached_at_dt = cached_at_dt.replace(tzinfo=timezone("America/Sao_Paulo"))
+
+        age = _now_sp() - cached_at_dt
+        is_stale = age > timedelta(minutes=CACHE_TTL_MINUTOS)
+        if is_stale and not allow_stale:
+            return None, None, False
+
         obj = pd.read_pickle(_CACHE_FILE)
-        return obj, cached_at_dt
+        return obj, cached_at_dt, is_stale
     except Exception:
-        return None, None
+        return None, None, False
 
 
 def _save_disk_cache(obj, cached_at: datetime):
@@ -306,40 +314,56 @@ def _save_disk_cache(obj, cached_at: datetime):
 def get_pca_cache(force: bool = False):
     """
     Retorna (cache_obj, status_msg)
+
     cache_obj: {"base": df_pca_base, "plan": df_planejamento, "proc": tabela_processos_unida}
     """
     global _CACHE, _CACHE_AT
 
-    now_naive = datetime.now()
+    now = _now_sp()
     stale = (
         _CACHE is None
         or _CACHE_AT is None
-        or (now_naive - _CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
+        or (now - _CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
     )
 
     if force or stale:
         with _CACHE_LOCK:
-            now2 = datetime.now()
+            now2 = _now_sp()
             stale2 = (
                 _CACHE is None
                 or _CACHE_AT is None
                 or (now2 - _CACHE_AT > timedelta(minutes=CACHE_TTL_MINUTOS))
             )
 
+            # 1) tenta cache em disco (fresco) quando não for reload manual
             if (not force) and stale2:
-                disk_obj, at_disk = _load_disk_cache()
+                disk_obj, at_disk, is_stale = _load_disk_cache(allow_stale=False)
                 if disk_obj is not None and at_disk is not None:
                     _CACHE = disk_obj
                     _CACHE_AT = now2
                     return _CACHE, f"Dados carregados do cache em disco ({_fmt_dt(at_disk)})."
 
-            if force or stale2:
+            # 2) tenta recarregar da planilha
+            try:
                 df_base = carregar_dados_pca()
                 df_plan, df_proc = _build_derivados(df_base.copy())
                 _CACHE = {"base": df_base, "plan": df_plan, "proc": df_proc}
                 _CACHE_AT = now2
                 _save_disk_cache(_CACHE, now2)
                 return _CACHE, f"Dados recarregados da planilha ({_fmt_dt(_now_sp())})."
+            except Exception as e:
+                # 3) fallback: mantém dados anteriores (memória) ou usa cache em disco mesmo vencido
+                if _CACHE is not None:
+                    return _CACHE, f"Falha ao recarregar a planilha; mantendo último cache em memória. ({type(e).__name__})"
+
+                disk_obj, at_disk, is_stale = _load_disk_cache(allow_stale=True)
+                if disk_obj is not None and at_disk is not None:
+                    _CACHE = disk_obj
+                    _CACHE_AT = now2
+                    msg_stale = "(cache vencido) " if is_stale else ""
+                    return _CACHE, f"Falha ao recarregar a planilha; usando {msg_stale}cache em disco ({_fmt_dt(at_disk)}). ({type(e).__name__})"
+
+                return {"base": pd.DataFrame(), "plan": pd.DataFrame(), "proc": pd.DataFrame()}, f"Falha ao carregar dados. ({type(e).__name__})"
 
     return _CACHE, f"Dados em cache (memória) — verificado em {_fmt_dt(_now_sp())}."
 
@@ -381,7 +405,7 @@ layout = html.Div(
                                 html.Label("Ano"),
                                 dcc.Dropdown(
                                     id="filtro_ano_pca",
-                                    options=[],
+                                    options=[{"label": "2026", "value": "2026"}],
                                     value="2026",
                                     placeholder=None,
                                     clearable=False,
@@ -425,6 +449,7 @@ layout = html.Div(
                                     id="filtro_classe_texto_pca",
                                     type="text",
                                     placeholder="Digite parte do nome da classe/grupo",
+                                    debounce=True,
                                     style={
                                         "width": "100%",
                                         "marginBottom": "6px",
@@ -440,6 +465,7 @@ layout = html.Div(
                                     id="filtro_dfd_texto_pca",
                                     type="text",
                                     placeholder="Digite parte do DFD",
+                                    debounce=True,
                                     style={
                                         "width": "100%",
                                         "marginBottom": "6px",
@@ -568,6 +594,7 @@ layout = html.Div(
                             data=[],
                             page_action="none",
                             fixed_rows={"headers": True},
+                            virtualization=True,
                             row_selectable=False,
                             cell_selectable=False,
                             column_selectable=False,
@@ -637,6 +664,7 @@ layout = html.Div(
                             data=[],
                             page_action="none",
                             fixed_rows={"headers": True},
+                            virtualization=True,
                             row_selectable=False,
                             cell_selectable=False,
                             column_selectable=False,
@@ -703,6 +731,23 @@ def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks):
     df_base = cache["base"] if cache else pd.DataFrame()
 
     anos = _opcoes_unicas(df_base, "Ano")
+    # Mantém TODOS os anos disponíveis, mas deixa 2026 como padrão na abertura.
+    # Normaliza para inteiros e ordena; preserva apenas valores numéricos.
+    anos_norm = []
+    for o in anos:
+        v = o.get("value")
+        try:
+            ano_int = int(float(str(v).strip()))
+        except Exception:
+            continue
+        anos_norm.append(ano_int)
+    anos_norm = sorted(set(anos_norm))
+    if 2026 not in anos_norm:
+        anos_norm = [2026] + anos_norm
+    anos = [{"label": str(a), "value": str(a)} for a in anos_norm]
+    if not anos:
+        anos = [{"label": "2026", "value": "2026"}]
+
     tipos = _opcoes_unicas(df_base, "Material ou Serviço")
     areas = _opcoes_unicas(df_base, "Área requisitante")
 
@@ -739,10 +784,13 @@ def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo):
     dff_plan = dff_plan[dff_plan["DFD"] != "*"]
     dff_proc = dff_proc[dff_proc["DFD"] != "*"]
 
-    if ano:
-        dff_plan = dff_plan[dff_plan["Ano"] == str(ano)]
-        dff_proc = dff_proc[dff_proc["Ano"] == str(ano)]
+    # Se o dropdown vier vazio na carga inicial, assume 2026 (comportamento esperado).
+    ano = str(ano).strip() if ano is not None else ""
+    if not ano:
+        ano = "2026"
 
+    dff_plan = dff_plan[dff_plan["Ano"] == str(ano)]
+    dff_proc = dff_proc[dff_proc["Ano"] == str(ano)]
     if classe_texto and str(classe_texto).strip():
         termo = str(classe_texto).strip().lower()
         if "Nome Classe/Grupo" in dff_plan.columns:
@@ -790,19 +838,9 @@ def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo):
         & (dff_proc["Processo"].notna())
     ]
 
-    # Item inteiro
-    dff_plan["Item"] = (
-        dff_plan["Item"]
-        .fillna("")
-        .astype(str)
-        .apply(lambda x: str(int(float(x))) if x not in ["", "nan"] else "")
-    )
-    dff_proc["Item"] = (
-        dff_proc["Item"]
-        .fillna("")
-        .astype(str)
-        .apply(lambda x: str(int(float(x))) if x not in ["", "nan"] else "")
-    )
+    # Item inteiro (robusto: não quebra em valores inesperados)
+    dff_plan["Item"] = dff_plan["Item"].apply(normalizar_item)
+    dff_proc["Item"] = dff_proc["Item"].apply(normalizar_item)
 
     dff_plan["Saldo_num"] = dff_plan["Saldo"]
     dff_plan["Planejado_num"] = dff_plan["Planejado"]
@@ -1067,7 +1105,28 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         cols_plan = [c for c in cols_plan if c in df_plan.columns]
         df_plan_filtered = df_plan[cols_plan].copy()
 
-        header_plan = ["DFD", "Área requisitante", "Material ou Serviço", "Item", "Nome Classe/Grupo", "Planejado", "Executado", "Saldo"]
+        label_plan = {
+            "DFD": "DFD",
+            "Área requisitante": "Área requisitante",
+            "Material ou Serviço": "Material ou Serviço",
+            "Item": "Item",
+            "Nome Classe/Grupo": "Nome Classe/Grupo",
+            "Planejado_fmt": "Planejado",
+            "Executado_fmt": "Executado",
+            "Saldo_fmt": "Saldo",
+        }
+        width_plan = {
+            "DFD": 0.9 * inch,
+            "Área requisitante": 1.1 * inch,
+            "Material ou Serviço": 1.2 * inch,
+            "Item": 0.45 * inch,
+            "Nome Classe/Grupo": 1.6 * inch,
+            "Planejado_fmt": 0.9 * inch,
+            "Executado_fmt": 0.9 * inch,
+            "Saldo_fmt": 0.9 * inch,
+        }
+
+        header_plan = [label_plan.get(c, c) for c in cols_plan]
         table_data_plan = [header_plan]
 
         for _, row in df_plan_filtered.iterrows():
@@ -1080,7 +1139,12 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                     linha.append(simple_pdf(valor))
             table_data_plan.append(linha)
 
-        col_widths_plan = [1.0 * inch, 1.0 * inch, 1.2 * inch, 0.4 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch]
+        col_widths_plan = [width_plan.get(c, 1.0 * inch) for c in cols_plan]
+        avail_w = pagesize[0] - doc.leftMargin - doc.rightMargin
+        total_w = sum(col_widths_plan) if col_widths_plan else 1.0
+        scale = min(1.0, avail_w / total_w)
+        col_widths_plan = [w * scale for w in col_widths_plan]
+
         tbl_plan = Table(table_data_plan, colWidths=col_widths_plan, repeatRows=1)
 
         style_list_plan = [
@@ -1124,7 +1188,28 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
         cols_proc = [c for c in cols_proc if c in df_proc.columns]
         df_proc_filtered = df_proc[cols_proc].copy()
 
-        header_proc = ["DFD", "Área requisitante", "Material ou Serviço", "Item", "Processo", "Objeto", "Observações", "Valor"]
+        label_proc = {
+            "DFD": "DFD",
+            "Área requisitante": "Área requisitante",
+            "Material ou Serviço": "Material ou Serviço",
+            "Item": "Item",
+            "Processo": "Processo",
+            "Objeto": "Objeto",
+            "Observações": "Observações",
+            "Valor_fmt": "Valor",
+        }
+        width_proc = {
+            "DFD": 0.85 * inch,
+            "Área requisitante": 1.0 * inch,
+            "Material ou Serviço": 1.1 * inch,
+            "Item": 0.5 * inch,
+            "Processo": 1.05 * inch,
+            "Objeto": 1.4 * inch,
+            "Observações": 1.4 * inch,
+            "Valor_fmt": 0.9 * inch,
+        }
+
+        header_proc = [label_proc.get(c, c) for c in cols_proc]
         table_data_proc = [header_proc]
 
         for _, row in df_proc_filtered.iterrows():
@@ -1137,7 +1222,12 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento):
                     linha.append(simple_pdf(valor))
             table_data_proc.append(linha)
 
-        col_widths_proc = [0.8 * inch, 0.9 * inch, 1.0 * inch, 0.5 * inch, 1.0 * inch, 1.3 * inch, 1.3 * inch, 1.0 * inch]
+        col_widths_proc = [width_proc.get(c, 1.0 * inch) for c in cols_proc]
+        avail_w = pagesize[0] - doc.leftMargin - doc.rightMargin
+        total_w = sum(col_widths_proc) if col_widths_proc else 1.0
+        scale = min(1.0, avail_w / total_w)
+        col_widths_proc = [w * scale for w in col_widths_proc]
+
         tbl_proc = Table(table_data_proc, colWidths=col_widths_proc, repeatRows=1)
 
         style_list_proc = [
