@@ -5,15 +5,18 @@
 html, body {
     width: 100%;
     height: 100%;
+    min-height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;           /* quem vai rolar é só .main-content */
-    background-color: #0b2b57;  /* mesma cor da barra, esconde qualquer 1px de gap */
+    overflow: hidden; /* no desktop, a página não rola inteira */
+    background-color: #0b2b57;
+    font-family: Arial, sans-serif;
 }
 
-/* conteúdo principal do Dash */
 #_dash-app-content {
+    width: 100%;
     height: 100%;
+    min-height: 100vh;
     overflow: hidden;
 }
 
@@ -22,7 +25,15 @@ html, body {
 /* ========================= */
 
 :root {
-    --sidebar-width: 280px; /* largura da barra azul */
+    --sidebar-width: clamp(230px, 18vw, 280px);
+    --sidebar-bg: #0b2b57;
+    --content-bg: #ffffff;
+    --text-light: #ffffff;
+    --text-dark: #0b2b57;
+    --text-active: #b30000;
+    --border-light: rgba(255, 255, 255, 0.25);
+    --submenu-bg: rgba(255, 255, 255, 0.04);
+    --button-bg: rgba(255, 255, 255, 0.06);
 }
 
 /* ========================= */
@@ -32,29 +43,37 @@ html, body {
 .app-root {
     width: 100%;
     height: 100%;
+    min-height: 100vh;
     overflow: hidden;
 }
 
 .app-container {
     display: flex;
     width: 100%;
-    height: 100vh; /* menu + conteúdo ocupam a viewport inteira */
-    overflow: hidden; /* impede rolagem no container geral */
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
+    align-items: stretch;
 }
 
 /* ========================= */
-/* SIDEBAR */
+/* SIDEBAR FIXA */
 /* ========================= */
 
 .sidebar {
     width: var(--sidebar-width);
-    height: 100vh;        /* ocupa sempre toda a altura da tela */
+    min-width: var(--sidebar-width);
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    left: 0;
     padding: 24px 20px;
-    background-color: #0b2b57;
-    color: white;
-    overflow: hidden;     /* sem rolagem no menu */
+    background-color: var(--sidebar-bg);
+    color: var(--text-light);
     box-sizing: border-box;
     flex-shrink: 0;
+    overflow-y: auto;   /* a sidebar só rola se o conteúdo dela ultrapassar a tela */
+    overflow-x: hidden;
 }
 
 .sidebar-header {
@@ -72,10 +91,11 @@ html, body {
 }
 
 .sidebar-title {
-    color: white;
-    font-size: 18px;
+    color: #ffffff;
+    font-size: clamp(17px, 1.1vw, 20px);
     font-weight: 600;
     margin: 5px 0;
+    text-align: center;
 }
 
 .sidebar-menu {
@@ -84,29 +104,46 @@ html, body {
     gap: 12px;
 }
 
-.sidebar-button {
+/* ========================= */
+/* BOTÕES BASE SIDEBAR */
+/* ========================= */
+
+.sidebar-button,
+.contratos-toggle,
+.processos-toggle,
+.fracionamento-toggle,
+.portarias-toggle {
     display: block;
     width: 100%;
     padding: 14px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--button-bg);
     color: #ffffff;
     text-decoration: none;
-    font-size: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    font-size: clamp(14px, 0.95vw, 15px);
+    border: 1px solid var(--border-light);
     box-shadow: 0 1px 3px rgba(0,0,0,0.25);
     transition: all 0.2s ease-in-out;
     box-sizing: border-box;
+    cursor: pointer;
 }
 
-.sidebar-button:hover {
+.sidebar-button:hover,
+.contratos-toggle:hover,
+.processos-toggle:hover,
+.fracionamento-toggle:hover,
+.portarias-toggle:hover {
     background: #ffffff;
     color: #0b2b57;
     border-color: #ffffff;
     transform: translateY(-1px);
 }
 
-.sidebar-button-active {
+.sidebar-button-active,
+.contratos-toggle.active,
+.processos-toggle.active,
+.fracionamento-toggle.active,
+.portarias-toggle.active {
     background: #ffffff;
     color: #0b2b57 !important;
     border-color: #ffffff;
@@ -119,15 +156,15 @@ html, body {
 
 .main-content {
     flex: 1;
-    height: 100%;
-    padding: 0;                /* nenhum espaço entre barra azul e imagem */
-    background-color: #ffffff;
-    overflow-y: auto;          /* rolagem só aqui (segunda coluna) */
-    overflow-x: hidden;        /* evita rolagem horizontal */
+    min-width: 0;
+    height: 100vh;
+    background-color: var(--content-bg);
+    overflow-y: auto;   /* só esta área rola */
+    overflow-x: hidden;
     box-sizing: border-box;
+    padding: 0;
 }
 
-/* Wrapper interno do Dash Pages */
 .page-wrapper {
     min-height: 100%;
 }
@@ -137,43 +174,47 @@ html, body {
 /* ========================= */
 
 .filtros-sticky {
-    position: sticky; /* fixa dentro da área branca */
+    position: sticky;
     top: 0;
     z-index: 10;
     background-color: #ffffff;
-    padding: 4px 0 8px 0; /* sem padding lateral, ocupa toda largura da main-content */
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 6px 12px 10px 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
 /* ========================= */
 /* HOME */
 /* ========================= */
 
-/* HOME – imagem ocupando somente a área ao lado da sidebar */
+/* Use este bloco se a home estiver com html.Img(className="home-image") */
 .home-container {
-    background-image: url("/assets/Painel DCC.png");
-    background-repeat: no-repeat;
-    background-position: left top;   /* começa colada na sidebar */
-    background-size: cover;          /* cobre toda a área disponível */
-
-    width: calc(100vw - var(--sidebar-width));  /* largura total menos a barra azul */
-    height: 100vh;                               /* altura da viewport */
-
+    width: 100%;
+    min-height: 100vh;
     margin: 0;
     padding: 0;
-
     position: relative;
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #ffffff;
 }
 
-/* sobreposição azul leve */
+.home-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    max-height: 100vh;
+    object-fit: contain; /* mostra a imagem inteira sem cortar */
+}
+
+/* overlay opcional */
 .home-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 43, 87, 0.027);
+    inset: 0;
+    background-color: rgba(0, 43, 87, 0.02);
+    pointer-events: none;
 }
 
 /* ========================= */
@@ -181,145 +222,62 @@ html, body {
 /* ========================= */
 
 .cards-container {
-    display: flex;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
     margin-bottom: 20px;
-    flex-wrap: wrap;
 }
 
 .card {
-    background-color: white;
+    background-color: #ffffff;
     padding: 10px 15px;
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-    flex: 1;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.20);
+    min-width: 0;
 }
 
 .card-title {
-    font-size: 14px;
+    font-size: clamp(13px, 0.9vw, 14px);
     color: #555;
     text-align: center;
 }
 
 .card-value {
-    font-size: 22px;
+    font-size: clamp(22px, 1.8vw, 30px);
     font-weight: bold;
     color: #b30000;
     text-align: center;
 }
 
 .charts-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 20px;
     margin-bottom: 25px;
 }
 
 /* ========================= */
-/* LIMPEZA FINAL DE OVERFLOW */
+/* TABELAS E GRÁFICOS */
 /* ========================= */
 
 .dash-table-container {
-    overflow: visible !important;
+    width: 100%;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
 }
 
 .js-plotly-plot {
+    width: 100% !important;
     overflow: visible !important;
 }
 
 /* ========================= */
-/* MOBILE */
-/* ========================= */
-
-@media (max-width: 768px) {
-
-    .sidebar {
-        position: relative;
-        width: 100%;
-        height: auto;
-    }
-
-    .main-content {
-        margin-left: 0;
-        width: 100%;
-        padding: 0 0 10px 0;
-        /* continua com overflow-y: auto; herdado */
-    }
-
-    .sidebar-menu {
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .sidebar-button {
-        font-size: 13px;
-        padding: 10px;
-    }
-
-    .cards-container {
-        flex-direction: column;
-    }
-
-    .charts-row {
-        flex-direction: column;
-    }
-
-    .charts-row > div {
-        width: 100% !important;
-    }
-
-    .filtros-sticky {
-        position: static;
-        box-shadow: none;
-        padding: 6px 0 8px 0;
-    }
-
-    .card-value {
-        font-size: 18px;
-    }
-
-    .card-title {
-        font-size: 13px;
-    }
-}
-
-/* ========================= */
-/* Contratos - Accordion */
+/* ACCORDION - CONTRATOS */
 /* ========================= */
 
 .contratos-container {
     width: 100%;
     margin-bottom: 12px;
-}
-
-.contratos-toggle {
-    display: block;
-    width: 100%;
-    padding: 14px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #ffffff;
-    text-decoration: none;
-    font-size: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    transition: all 0.2s ease-in-out;
-    box-sizing: border-box;
-    cursor: pointer;
-}
-
-.contratos-toggle:hover {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    transform: translateY(-1px);
-}
-
-.contratos-toggle.active {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    font-weight: 600;
 }
 
 .contratos-content {
@@ -329,18 +287,18 @@ html, body {
 }
 
 .contratos-content.expanded {
-    max-height: 200px;
+    max-height: 300px;
 }
 
 .contratos-subbutton {
     display: block;
     width: 100%;
     padding: 10px 14px 10px 28px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 14px;
+    font-size: clamp(13px, 0.9vw, 14px);
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -357,7 +315,7 @@ html, body {
 }
 
 /* ========================= */
-/* Processos - Accordion */
+/* ACCORDION - PROCESSOS */
 /* ========================= */
 
 .processos-container {
@@ -365,60 +323,25 @@ html, body {
     margin-bottom: 12px;
 }
 
-/* Botão principal da caixa */
-.processos-toggle {
-    display: block;
-    width: 100%;
-    padding: 14px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #ffffff;
-    text-decoration: none;
-    font-size: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    transition: all 0.2s ease-in-out;
-    box-sizing: border-box;
-    cursor: pointer;
-}
-
-.processos-toggle:hover {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    transform: translateY(-1px);
-}
-
-/* Estado ativo (quando expandido) */
-.processos-toggle.active {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    font-weight: 600;
-}
-
-/* Conteúdo interno (links de processos) */
 .processos-content {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.25s ease-out;
 }
 
-/* Quando expandido */
 .processos-content.expanded {
-    max-height: 200px; /* ajuste se precisar */
+    max-height: 300px;
 }
 
-/* Estilo base dos sub-links */
 .processos-subbutton {
     display: block;
     width: 100%;
     padding: 10px 14px 10px 28px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 14px;
+    font-size: clamp(13px, 0.9vw, 14px);
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -428,15 +351,14 @@ html, body {
     color: #0b2b57;
 }
 
-/* Estado ativo dos sublinks de processos */
 .processos-subbutton-active {
     background: #ffffff;
-    color: #b30000; /* texto vermelho quando selecionado */
+    color: #b30000;
     font-weight: 600;
 }
 
 /* ========================= */
-/* Fracionamento - Accordion */
+/* ACCORDION - FRACIONAMENTO */
 /* ========================= */
 
 .fracionamento-container {
@@ -444,60 +366,25 @@ html, body {
     margin-bottom: 12px;
 }
 
-/* Botão principal da caixa */
-.fracionamento-toggle {
-    display: block;
-    width: 100%;
-    padding: 14px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #ffffff;
-    text-decoration: none;
-    font-size: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    transition: all 0.2s ease-in-out;
-    box-sizing: border-box;
-    cursor: pointer;
-}
-
-.fracionamento-toggle:hover {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    transform: translateY(-1px);
-}
-
-/* Estado ativo (quando expandido) */
-.fracionamento-toggle.active {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    font-weight: 600;
-}
-
-/* Conteúdo interno (links PDM e CATSER) */
 .fracionamento-content {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.25s ease-out;
 }
 
-/* Quando expandido */
 .fracionamento-content.expanded {
-    max-height: 250px; /* ajuste se precisar */
+    max-height: 320px;
 }
 
-/* Estilo base dos sub-links */
 .fracionamento-subbutton {
     display: block;
     width: 100%;
     padding: 10px 14px 10px 28px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 14px;
+    font-size: clamp(13px, 0.9vw, 14px);
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -507,50 +394,19 @@ html, body {
     color: #0b2b57;
 }
 
-/* Estado ativo dos sublinks de fracionamento */
 .fracionamento-subbutton-active {
     background: #ffffff;
-    color: #b30000; /* vermelho do texto quando selecionado */
+    color: #b30000;
     font-weight: 600;
 }
 
 /* ========================= */
-/* Portarias - Accordion */
+/* ACCORDION - PORTARIAS */
 /* ========================= */
 
 .portarias-container {
     width: 100%;
     margin-bottom: 12px;
-}
-
-.portarias-toggle {
-    display: block;
-    width: 100%;
-    padding: 14px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #ffffff;
-    text-decoration: none;
-    font-size: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    transition: all 0.2s ease-in-out;
-    box-sizing: border-box;
-    cursor: pointer;
-}
-
-.portarias-toggle:hover {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    transform: translateY(-1px);
-}
-
-.portarias-toggle.active {
-    background: #ffffff;
-    color: #0b2b57;
-    border-color: #ffffff;
-    font-weight: 600;
 }
 
 .portarias-content {
@@ -560,19 +416,18 @@ html, body {
 }
 
 .portarias-content.expanded {
-    max-height: 200px;
+    max-height: 300px;
 }
 
-/* usa o mesmo estilo de sublink e ativo do fracionamento */
 .portarias-subbutton {
     display: block;
     width: 100%;
     padding: 10px 14px 10px 28px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 14px;
+    font-size: clamp(13px, 0.9vw, 14px);
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -582,9 +437,181 @@ html, body {
     color: #0b2b57;
 }
 
-/* ativo: texto vermelho e fundo branco reaproveitando a ideia anterior */
 .portarias-subbutton-active {
     background: #ffffff;
     color: #b30000;
     font-weight: 600;
+}
+
+/* ========================= */
+/* NOTEBOOK / DESKTOP MENOR */
+/* ========================= */
+
+@media (max-width: 1200px) {
+    :root {
+        --sidebar-width: 240px;
+    }
+
+    .sidebar {
+        padding: 20px 16px;
+    }
+
+    .sidebar-logo {
+        max-width: 210px;
+    }
+}
+
+/* ========================= */
+/* TABLET */
+/* ========================= */
+
+@media (max-width: 900px) {
+    html, body {
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    #_dash-app-content,
+    .app-root,
+    .app-container {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    .app-container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        position: relative;
+        top: auto;
+        left: auto;
+        width: 100%;
+        min-width: 100%;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        padding: 18px 14px;
+    }
+
+    .main-content {
+        width: 100%;
+        height: auto;
+        min-height: auto;
+        overflow: visible;
+    }
+
+    .sidebar-menu {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 13px;
+        padding: 10px 12px;
+    }
+
+    .filtros-sticky {
+        position: static;
+        box-shadow: none;
+    }
+
+    .home-container {
+        min-height: auto;
+        padding: 0;
+    }
+
+    .home-image {
+        max-height: none;
+    }
+}
+
+/* ========================= */
+/* CELULAR */
+/* ========================= */
+
+@media (max-width: 600px) {
+    .sidebar-logo {
+        max-width: 160px;
+    }
+
+    .sidebar-title {
+        font-size: 15px;
+    }
+
+    .cards-container,
+    .charts-row {
+        grid-template-columns: 1fr;
+    }
+
+    .card-title {
+        font-size: 13px;
+    }
+
+    .card-value {
+        font-size: 22px;
+    }
+
+    .contratos-subbutton,
+    .processos-subbutton,
+    .fracionamento-subbutton,
+    .portarias-subbutton {
+        padding-left: 18px;
+    }
+}
+
+/* ========================= */
+/* TV / TELAS GRANDES */
+/* ========================= */
+
+@media (min-width: 1800px) {
+    :root {
+        --sidebar-width: 320px;
+    }
+
+    .sidebar {
+        padding: 30px 22px;
+    }
+
+    .sidebar-logo {
+        max-width: 270px;
+    }
+
+    .sidebar-title {
+        font-size: 22px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 18px;
+        padding: 16px;
+    }
+
+    .contratos-subbutton,
+    .processos-subbutton,
+    .fracionamento-subbutton,
+    .portarias-subbutton {
+        font-size: 16px;
+    }
+
+    .card-title {
+        font-size: 16px;
+    }
+
+    .card-value {
+        font-size: 34px;
+    }
+
+    .charts-row {
+        grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    }
 }

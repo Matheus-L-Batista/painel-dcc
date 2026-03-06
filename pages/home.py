@@ -10,13 +10,9 @@ dash.register_page(
 layout = html.Div(
     className="home-container",
     children=[
-        html.Div(className="home-overlay"),
-        # aqui você pode colocar conteúdo por cima da imagem
-        # html.Div(
-        #     children=[
-        #         html.H1("Diretoria de Compras e Contratos"),
-        #         html.P("Texto descritivo..."),
-        #     ]
-        # ),
-    ],
+        html.Img(
+            src="/assets/Painel DCC.png",
+            className="home-image"
+        )
+    ]
 )
