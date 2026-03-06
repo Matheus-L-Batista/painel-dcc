@@ -8,7 +8,7 @@ html, body {
     min-height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden; /* no desktop, a página não rola inteira */
+    overflow: hidden; /* desktop/tv: página toda não rola */
     background-color: #0b2b57;
     font-family: Arial, sans-serif;
 }
@@ -25,7 +25,7 @@ html, body {
 /* ========================= */
 
 :root {
-    --sidebar-width: clamp(230px, 18vw, 280px);
+    --sidebar-width: clamp(250px, 17vw, 320px);
     --sidebar-bg: #0b2b57;
     --content-bg: #ffffff;
     --text-light: #ffffff;
@@ -34,6 +34,7 @@ html, body {
     --border-light: rgba(255, 255, 255, 0.25);
     --submenu-bg: rgba(255, 255, 255, 0.04);
     --button-bg: rgba(255, 255, 255, 0.06);
+    --shadow-soft: 0 1px 3px rgba(0,0,0,0.20);
 }
 
 /* ========================= */
@@ -42,37 +43,36 @@ html, body {
 
 .app-root {
     width: 100%;
-    height: 100%;
     min-height: 100vh;
     overflow: hidden;
 }
 
 .app-container {
-    display: flex;
     width: 100%;
-    height: 100vh;
     min-height: 100vh;
     overflow: hidden;
-    align-items: stretch;
 }
 
 /* ========================= */
-/* SIDEBAR FIXA */
+/* SIDEBAR FIXA - DESKTOP / TV */
 /* ========================= */
 
 .sidebar {
-    width: var(--sidebar-width);
-    min-width: var(--sidebar-width);
-    height: 100vh;
-    position: sticky;
+    position: fixed;
     top: 0;
     left: 0;
+    bottom: 0;
+    z-index: 1000;
+
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+
     padding: 24px 20px;
     background-color: var(--sidebar-bg);
     color: var(--text-light);
+
     box-sizing: border-box;
-    flex-shrink: 0;
-    overflow-y: auto;   /* a sidebar só rola se o conteúdo dela ultrapassar a tela */
+    overflow-y: auto;
     overflow-x: hidden;
 }
 
@@ -80,7 +80,7 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: 30px;
+    margin-bottom: 28px;
 }
 
 .sidebar-logo {
@@ -88,13 +88,14 @@ html, body {
     max-width: 250px;
     height: auto;
     margin-bottom: 12px;
+    display: block;
 }
 
 .sidebar-title {
     color: #ffffff;
-    font-size: clamp(17px, 1.1vw, 20px);
-    font-weight: 600;
-    margin: 5px 0;
+    font-size: clamp(18px, 1.05vw, 22px);
+    font-weight: 700;
+    margin: 4px 0;
     text-align: center;
 }
 
@@ -105,7 +106,7 @@ html, body {
 }
 
 /* ========================= */
-/* BOTÕES BASE SIDEBAR */
+/* BOTÕES PRINCIPAIS SIDEBAR */
 /* ========================= */
 
 .sidebar-button,
@@ -115,17 +116,19 @@ html, body {
 .portarias-toggle {
     display: block;
     width: 100%;
-    padding: 14px;
+    padding: 14px 14px;
     border-radius: 6px;
     background: var(--button-bg);
     color: #ffffff;
     text-decoration: none;
-    font-size: clamp(14px, 0.95vw, 15px);
+    font-size: clamp(14px, 0.95vw, 17px);
+    line-height: 1.35;
     border: 1px solid var(--border-light);
     box-shadow: 0 1px 3px rgba(0,0,0,0.25);
     transition: all 0.2s ease-in-out;
     box-sizing: border-box;
     cursor: pointer;
+    font-weight: 500;
 }
 
 .sidebar-button:hover,
@@ -147,7 +150,7 @@ html, body {
     background: #ffffff;
     color: #0b2b57 !important;
     border-color: #ffffff;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 /* ========================= */
@@ -155,18 +158,20 @@ html, body {
 /* ========================= */
 
 .main-content {
-    flex: 1;
-    min-width: 0;
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+    min-height: 100vh;
     height: 100vh;
+
     background-color: var(--content-bg);
-    overflow-y: auto;   /* só esta área rola */
+    overflow-y: auto;
     overflow-x: hidden;
     box-sizing: border-box;
     padding: 0;
 }
 
 .page-wrapper {
-    min-height: 100%;
+    min-height: 100vh;
 }
 
 /* ========================= */
@@ -176,7 +181,7 @@ html, body {
 .filtros-sticky {
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 20;
     background-color: #ffffff;
     padding: 6px 12px 10px 12px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
@@ -186,34 +191,25 @@ html, body {
 /* HOME */
 /* ========================= */
 
-/* Use este bloco se a home estiver com html.Img(className="home-image") */
 .home-container {
     width: 100%;
+    height: 100vh;
     min-height: 100vh;
-    margin: 0;
-    padding: 0;
+
+    background-image: url("/assets/Painel DCC.png");
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: cover;
+    background-color: #ffffff;
+
     position: relative;
     overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: #ffffff;
 }
 
-.home-image {
-    display: block;
-    width: 100%;
-    height: auto;
-    max-width: 100%;
-    max-height: 100vh;
-    object-fit: contain; /* mostra a imagem inteira sem cortar */
-}
-
-/* overlay opcional */
 .home-overlay {
     position: absolute;
     inset: 0;
-    background-color: rgba(0, 43, 87, 0.02);
+    background-color: rgba(0, 43, 87, 0.00);
     pointer-events: none;
 }
 
@@ -230,23 +226,25 @@ html, body {
 
 .card {
     background-color: #ffffff;
-    padding: 10px 15px;
-    border-radius: 6px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.20);
+    padding: 12px 16px;
+    border-radius: 8px;
+    box-shadow: var(--shadow-soft);
     min-width: 0;
 }
 
 .card-title {
-    font-size: clamp(13px, 0.9vw, 14px);
+    font-size: clamp(13px, 0.9vw, 15px);
     color: #555;
     text-align: center;
+    line-height: 1.35;
 }
 
 .card-value {
-    font-size: clamp(22px, 1.8vw, 30px);
-    font-weight: bold;
+    font-size: clamp(22px, 1.8vw, 34px);
+    font-weight: 700;
     color: #b30000;
     text-align: center;
+    line-height: 1.2;
 }
 
 .charts-row {
@@ -287,7 +285,7 @@ html, body {
 }
 
 .contratos-content.expanded {
-    max-height: 300px;
+    max-height: 320px;
 }
 
 .contratos-subbutton {
@@ -298,7 +296,8 @@ html, body {
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: clamp(13px, 0.9vw, 14px);
+    font-size: clamp(13px, 0.88vw, 15px);
+    line-height: 1.35;
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -311,7 +310,7 @@ html, body {
 .contratos-subbutton-active {
     background: #ffffff;
     color: #b30000;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 /* ========================= */
@@ -330,7 +329,7 @@ html, body {
 }
 
 .processos-content.expanded {
-    max-height: 300px;
+    max-height: 320px;
 }
 
 .processos-subbutton {
@@ -341,7 +340,8 @@ html, body {
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: clamp(13px, 0.9vw, 14px);
+    font-size: clamp(13px, 0.88vw, 15px);
+    line-height: 1.35;
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -354,7 +354,7 @@ html, body {
 .processos-subbutton-active {
     background: #ffffff;
     color: #b30000;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 /* ========================= */
@@ -373,7 +373,7 @@ html, body {
 }
 
 .fracionamento-content.expanded {
-    max-height: 320px;
+    max-height: 360px;
 }
 
 .fracionamento-subbutton {
@@ -384,7 +384,8 @@ html, body {
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: clamp(13px, 0.9vw, 14px);
+    font-size: clamp(13px, 0.88vw, 15px);
+    line-height: 1.35;
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -397,7 +398,7 @@ html, body {
 .fracionamento-subbutton-active {
     background: #ffffff;
     color: #b30000;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 /* ========================= */
@@ -416,7 +417,7 @@ html, body {
 }
 
 .portarias-content.expanded {
-    max-height: 300px;
+    max-height: 320px;
 }
 
 .portarias-subbutton {
@@ -427,7 +428,8 @@ html, body {
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: clamp(13px, 0.9vw, 14px);
+    font-size: clamp(13px, 0.88vw, 15px);
+    line-height: 1.35;
     border-top: 1px solid rgba(255,255,255,0.15);
     box-sizing: border-box;
 }
@@ -440,29 +442,108 @@ html, body {
 .portarias-subbutton-active {
     background: #ffffff;
     color: #b30000;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 /* ========================= */
-/* NOTEBOOK / DESKTOP MENOR */
+/* DESKTOP MÉDIO / NOTEBOOK */
 /* ========================= */
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
     :root {
-        --sidebar-width: 240px;
+        --sidebar-width: 280px;
     }
 
     .sidebar {
-        padding: 20px 16px;
+        padding: 22px 16px;
     }
 
     .sidebar-logo {
-        max-width: 210px;
+        max-width: 220px;
+    }
+}
+
+@media (max-width: 1200px) {
+    :root {
+        --sidebar-width: 250px;
+    }
+
+    .sidebar {
+        padding: 20px 14px;
+    }
+
+    .sidebar-logo {
+        max-width: 200px;
+    }
+
+    .sidebar-title {
+        font-size: 18px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 14px;
+        padding: 12px;
     }
 }
 
 /* ========================= */
-/* TABLET */
+/* TV / TELAS GRANDES */
+/* ========================= */
+
+@media (min-width: 1800px) {
+    :root {
+        --sidebar-width: 340px;
+    }
+
+    .sidebar {
+        padding: 30px 24px;
+    }
+
+    .sidebar-logo {
+        max-width: 280px;
+    }
+
+    .sidebar-title {
+        font-size: 24px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 18px;
+        padding: 16px;
+        border-radius: 8px;
+    }
+
+    .contratos-subbutton,
+    .processos-subbutton,
+    .fracionamento-subbutton,
+    .portarias-subbutton {
+        font-size: 16px;
+        padding: 12px 16px 12px 30px;
+    }
+
+    .card-title {
+        font-size: 16px;
+    }
+
+    .card-value {
+        font-size: 34px;
+    }
+
+    .charts-row {
+        grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    }
+}
+
+/* ========================= */
+/* TABLET E CELULAR */
 /* ========================= */
 
 @media (max-width: 900px) {
@@ -480,6 +561,7 @@ html, body {
     }
 
     .app-container {
+        display: flex;
         flex-direction: column;
     }
 
@@ -487,6 +569,7 @@ html, body {
         position: relative;
         top: auto;
         left: auto;
+        bottom: auto;
         width: 100%;
         min-width: 100%;
         height: auto;
@@ -496,10 +579,15 @@ html, body {
     }
 
     .main-content {
+        margin-left: 0;
         width: 100%;
         height: auto;
         min-height: auto;
         overflow: visible;
+    }
+
+    .page-wrapper {
+        min-height: auto;
     }
 
     .sidebar-menu {
@@ -523,12 +611,10 @@ html, body {
     }
 
     .home-container {
-        min-height: auto;
-        padding: 0;
-    }
-
-    .home-image {
-        max-height: none;
+        min-height: calc(100vh - 120px);
+        height: calc(100vh - 120px);
+        background-size: cover;
+        background-position: center center;
     }
 }
 
@@ -563,55 +649,5 @@ html, body {
     .fracionamento-subbutton,
     .portarias-subbutton {
         padding-left: 18px;
-    }
-}
-
-/* ========================= */
-/* TV / TELAS GRANDES */
-/* ========================= */
-
-@media (min-width: 1800px) {
-    :root {
-        --sidebar-width: 320px;
-    }
-
-    .sidebar {
-        padding: 30px 22px;
-    }
-
-    .sidebar-logo {
-        max-width: 270px;
-    }
-
-    .sidebar-title {
-        font-size: 22px;
-    }
-
-    .sidebar-button,
-    .contratos-toggle,
-    .processos-toggle,
-    .fracionamento-toggle,
-    .portarias-toggle {
-        font-size: 18px;
-        padding: 16px;
-    }
-
-    .contratos-subbutton,
-    .processos-subbutton,
-    .fracionamento-subbutton,
-    .portarias-subbutton {
-        font-size: 16px;
-    }
-
-    .card-title {
-        font-size: 16px;
-    }
-
-    .card-value {
-        font-size: 34px;
-    }
-
-    .charts-row {
-        grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
     }
 }
