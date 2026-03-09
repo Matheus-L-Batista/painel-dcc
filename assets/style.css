@@ -102,6 +102,31 @@ html, body {
     display: block;
 }
 
+/* ========================= */
+/* CARTÃO DE ORIENTAÇÃO */
+/* ========================= */
+
+.zoom-alert {
+    width: 100%;
+    margin: -2px 0 14px 0;
+    padding: 10px 12px;
+
+    background: #ffffff;
+    border: 1px solid #d9d9d9;
+    border-radius: 10px;
+
+    color: #0b2b57;
+    font-size: 13px;
+    line-height: 1.35;
+    text-align: center;
+
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+.zoom-alert strong{
+    color: #0b2b57;
+    font-weight: 700;
+}
 .sidebar-title {
     color: #ffffff;
     font-size: 24px;
@@ -506,6 +531,11 @@ html, body {
         max-width: 280px;
     }
 
+    .zoom-alert {
+        font-size: 12px;
+        padding: 9px 10px;
+    }
+
     .sidebar-title {
         font-size: 22px;
     }
@@ -534,6 +564,13 @@ html, body {
 
     .sidebar-logo {
         max-width: 220px;
+    }
+
+    .zoom-alert {
+        font-size: 11px;
+        line-height: 1.3;
+        padding: 8px 9px;
+        margin: 0 0 12px 0;
     }
 
     .sidebar-title {
@@ -581,6 +618,12 @@ html, body {
     .sidebar-logo {
         max-width: 290px;
         margin-bottom: 10px;
+    }
+
+    .zoom-alert {
+        font-size: 12px;
+        padding: 8px 10px;
+        margin: 0 0 10px 0;
     }
 
     .sidebar-title {
@@ -640,6 +683,12 @@ html, body {
     .sidebar-logo {
         max-width: 270px;
         margin-bottom: 8px;
+    }
+
+    .zoom-alert {
+        font-size: 11px;
+        padding: 8px 10px;
+        margin: 0 0 10px 0;
     }
 
     .sidebar-title {
@@ -703,6 +752,12 @@ html, body {
     .sidebar-logo {
         max-width: 250px;
         margin: 0 auto 10px auto;
+    }
+
+    .zoom-alert {
+        font-size: 11px;
+        padding: 8px 9px;
+        margin: 0 0 10px 0;
     }
 
     .sidebar-title {

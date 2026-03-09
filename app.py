@@ -55,6 +55,20 @@ app.layout = html.Div(
                                     src="/assets/logo_unifei.png",
                                     className="sidebar-logo",
                                 ),
+
+                                html.Div(
+                                    [
+                                        html.Strong(
+                                            [
+                                                "PARA MELHOR VISUALIZAÇÃO DO PAINEL,",
+                                                html.Br(),
+                                                "AJUSTE O ZOOM DO NAVEGADOR!",
+                                            ]
+                                        )
+                                    ],
+                                    className="zoom-alert",
+                                ),
+
                                 html.H2(
                                     "Painéis",
                                     className="sidebar-title",
