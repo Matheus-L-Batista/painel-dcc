@@ -25,7 +25,9 @@ html, body {
 /* ========================= */
 
 :root {
-    --sidebar-width: clamp(360px, 20vw, 420px);
+    --sidebar-width: 20vw;
+    --sidebar-min: 320px;
+    --sidebar-max: 420px;
 
     --sidebar-bg: #0b2b57;
     --content-bg: #ffffff;
@@ -65,7 +67,7 @@ html, body {
     bottom: 0;
     z-index: 1000;
 
-    width: var(--sidebar-width);
+    width: clamp(var(--sidebar-min), var(--sidebar-width), var(--sidebar-max));
     min-width: var(--sidebar-min);
     max-width: var(--sidebar-max);
 
@@ -77,7 +79,7 @@ html, body {
 
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* a sidebar inteira não rola */
+    overflow: hidden;
 }
 
 /* ========================= */
@@ -188,8 +190,8 @@ html, body {
 /* ========================= */
 
 .main-content {
-    margin-left: var(--sidebar-width);
-    width: calc(100vw - var(--sidebar-width));
+    margin-left: clamp(var(--sidebar-min), var(--sidebar-width), var(--sidebar-max));
+    width: calc(100vw - clamp(var(--sidebar-min), var(--sidebar-width), var(--sidebar-max)));
     min-height: 100vh;
     height: 100vh;
     background-color: var(--content-bg);
@@ -224,12 +226,10 @@ html, body {
     width: 100%;
     height: 100vh;
     min-height: 100vh;
-
     background-image: url("/assets/Painel DCC.png");
     background-repeat: no-repeat;
     background-position: center right;
     background-size: contain;
-
     background-color: #ffffff;
     position: relative;
     overflow: hidden;
@@ -475,3 +475,61 @@ html, body {
 }
 
 /* ========================= */
+/* RESPONSIVIDADE EXTRA */
+/* ========================= */
+
+@media (max-width: 1200px) {
+    :root {
+        --sidebar-min: 300px;
+        --sidebar-max: 360px;
+    }
+
+    .sidebar-logo {
+        max-width: 280px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 16px;
+        padding: 13px 14px;
+    }
+}
+
+@media (max-width: 900px) {
+    :root {
+        --sidebar-min: 280px;
+        --sidebar-max: 320px;
+    }
+
+    .sidebar {
+        padding: 18px 14px;
+    }
+
+    .sidebar-logo {
+        max-width: 240px;
+    }
+
+    .sidebar-title {
+        font-size: 18px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 15px;
+        padding: 12px 13px;
+    }
+
+    .contratos-subbutton,
+    .processos-subbutton,
+    .fracionamento-subbutton,
+    .portarias-subbutton {
+        font-size: 14px;
+        padding: 9px 12px 9px 24px;
+    }
+}
