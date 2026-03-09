@@ -25,9 +25,9 @@ html, body {
 /* ========================= */
 
 :root {
-    --sidebar-width: 20vw;
-    --sidebar-min: 320px;
-    --sidebar-max: 420px;
+    --sidebar-width: 25vw;
+    --sidebar-min: 380px;
+    --sidebar-max: 520px;
 
     --sidebar-bg: #0b2b57;
     --content-bg: #ffffff;
@@ -71,12 +71,11 @@ html, body {
     min-width: var(--sidebar-min);
     max-width: var(--sidebar-max);
 
-    padding: 22px 18px;
+    padding: 24px 20px;
     background-color: var(--sidebar-bg);
     color: var(--text-light);
 
     box-sizing: border-box;
-
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -92,23 +91,24 @@ html, body {
     align-items: center;
     justify-content: flex-start;
     flex: 0 0 auto;
-    margin-bottom: 18px;
+    margin-bottom: 22px;
 }
 
 .sidebar-logo {
     width: 100%;
-    max-width: 320px;
+    max-width: 340px;
     height: auto;
-    margin-bottom: 12px;
+    margin: 0 auto 14px auto;
     display: block;
 }
 
 .sidebar-title {
     color: #ffffff;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 700;
     margin: 0;
     text-align: center;
+    line-height: 1.2;
 }
 
 /* ========================= */
@@ -118,7 +118,7 @@ html, body {
 .sidebar-menu {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
 
     flex: 1 1 auto;
     min-height: 0;
@@ -129,6 +129,7 @@ html, body {
     -ms-overflow-style: none;
 
     padding-right: 2px;
+    padding-bottom: 6px;
 }
 
 .sidebar-menu::-webkit-scrollbar {
@@ -146,21 +147,25 @@ html, body {
 .processos-toggle,
 .fracionamento-toggle,
 .portarias-toggle {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    padding: 14px 16px;
-    border-radius: 8px;
+    min-height: 58px;
+    padding: 16px 18px;
+    border-radius: 10px;
     background: var(--button-bg);
     color: #ffffff;
     text-decoration: none;
-    font-size: 17px;
+    font-size: 20px;
     line-height: 1.3;
+    text-align: center;
     border: 1px solid var(--border-light);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
     transition: all 0.2s ease-in-out;
     box-sizing: border-box;
     cursor: pointer;
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .sidebar-button:hover,
@@ -228,8 +233,8 @@ html, body {
     min-height: 100vh;
     background-image: url("/assets/Painel DCC.png");
     background-repeat: no-repeat;
-    background-position: center right;
-    background-size: contain;
+    background-position: center center;
+    background-size: 100% auto;
     background-color: #ffffff;
     position: relative;
     overflow: hidden;
@@ -314,19 +319,22 @@ html, body {
 }
 
 .contratos-content.expanded {
-    max-height: 320px;
+    max-height: 360px;
 }
 
 .contratos-subbutton {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    padding: 10px 14px 10px 28px;
+    padding: 12px 16px;
     background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.3;
+    text-align: center;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     box-sizing: border-box;
 }
@@ -358,19 +366,22 @@ html, body {
 }
 
 .processos-content.expanded {
-    max-height: 320px;
+    max-height: 360px;
 }
 
 .processos-subbutton {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    padding: 10px 14px 10px 28px;
+    padding: 12px 16px;
     background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.3;
+    text-align: center;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     box-sizing: border-box;
 }
@@ -402,19 +413,22 @@ html, body {
 }
 
 .fracionamento-content.expanded {
-    max-height: 360px;
+    max-height: 400px;
 }
 
 .fracionamento-subbutton {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    padding: 10px 14px 10px 28px;
+    padding: 12px 16px;
     background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.3;
+    text-align: center;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     box-sizing: border-box;
 }
@@ -446,19 +460,22 @@ html, body {
 }
 
 .portarias-content.expanded {
-    max-height: 320px;
+    max-height: 360px;
 }
 
 .portarias-subbutton {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    padding: 10px 14px 10px 28px;
+    padding: 12px 16px;
     background: var(--submenu-bg);
     border-radius: 0 0 6px 6px;
     color: #ffffff;
     text-decoration: none;
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.3;
+    text-align: center;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     box-sizing: border-box;
 }
@@ -480,12 +497,17 @@ html, body {
 
 @media (max-width: 1200px) {
     :root {
-        --sidebar-min: 300px;
-        --sidebar-max: 360px;
+        --sidebar-width: 28vw;
+        --sidebar-min: 320px;
+        --sidebar-max: 400px;
     }
 
     .sidebar-logo {
         max-width: 280px;
+    }
+
+    .sidebar-title {
+        font-size: 22px;
     }
 
     .sidebar-button,
@@ -493,15 +515,17 @@ html, body {
     .processos-toggle,
     .fracionamento-toggle,
     .portarias-toggle {
-        font-size: 16px;
-        padding: 13px 14px;
+        font-size: 18px;
+        min-height: 54px;
+        padding: 14px 16px;
     }
 }
 
 @media (max-width: 900px) {
     :root {
+        --sidebar-width: 30vw;
         --sidebar-min: 280px;
-        --sidebar-max: 320px;
+        --sidebar-max: 340px;
     }
 
     .sidebar {
@@ -509,7 +533,7 @@ html, body {
     }
 
     .sidebar-logo {
-        max-width: 240px;
+        max-width: 220px;
     }
 
     .sidebar-title {
@@ -521,8 +545,9 @@ html, body {
     .processos-toggle,
     .fracionamento-toggle,
     .portarias-toggle {
-        font-size: 15px;
-        padding: 12px 13px;
+        font-size: 16px;
+        min-height: 48px;
+        padding: 12px 14px;
     }
 
     .contratos-subbutton,
@@ -530,6 +555,128 @@ html, body {
     .fracionamento-subbutton,
     .portarias-subbutton {
         font-size: 14px;
-        padding: 9px 12px 9px 24px;
+        padding: 10px 12px;
+    }
+}
+
+/* ========================= */
+/* AJUSTES APENAS PARA TV / TELAS MUITO LARGAS */
+/* ========================= */
+
+@media (min-width: 1600px) and (max-height: 900px) {
+    :root {
+        --sidebar-width: 22vw;
+        --sidebar-min: 360px;
+        --sidebar-max: 450px;
+    }
+
+    .sidebar {
+        padding: 18px 16px;
+    }
+
+    .sidebar-header {
+        margin-bottom: 14px;
+    }
+
+    .sidebar-logo {
+        max-width: 290px;
+        margin-bottom: 10px;
+    }
+
+    .sidebar-title {
+        font-size: 21px;
+    }
+
+    .sidebar-menu {
+        gap: 8px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 17px;
+        min-height: 50px;
+        padding: 12px 14px;
+        line-height: 1.2;
+    }
+
+    .contratos-subbutton,
+    .processos-subbutton,
+    .fracionamento-subbutton,
+    .portarias-subbutton {
+        font-size: 15px;
+        padding: 10px 12px;
+        line-height: 1.2;
+    }
+
+    .contratos-content.expanded,
+    .processos-content.expanded,
+    .portarias-content.expanded {
+        max-height: 300px;
+    }
+
+    .fracionamento-content.expanded {
+        max-height: 340px;
+    }
+}
+
+@media (min-width: 1920px) and (max-height: 1080px) {
+    :root {
+        --sidebar-width: 21vw;
+        --sidebar-min: 340px;
+        --sidebar-max: 420px;
+    }
+
+    .sidebar {
+        padding: 16px 14px;
+    }
+
+    .sidebar-header {
+        margin-bottom: 12px;
+    }
+
+    .sidebar-logo {
+        max-width: 270px;
+        margin-bottom: 8px;
+    }
+
+    .sidebar-title {
+        font-size: 20px;
+    }
+
+    .sidebar-menu {
+        gap: 7px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        font-size: 16px;
+        min-height: 48px;
+        padding: 11px 13px;
+        line-height: 1.15;
+    }
+
+    .contratos-subbutton,
+    .processos-subbutton,
+    .fracionamento-subbutton,
+    .portarias-subbutton {
+        font-size: 14px;
+        padding: 9px 11px;
+        line-height: 1.15;
+    }
+
+    .contratos-content.expanded,
+    .processos-content.expanded,
+    .portarias-content.expanded {
+        max-height: 280px;
+    }
+
+    .fracionamento-content.expanded {
+        max-height: 320px;
     }
 }
