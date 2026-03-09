@@ -680,3 +680,63 @@ html, body {
         max-height: 320px;
     }
 }
+
+/* ========================= */
+/* AJUSTE ESPECÍFICO PARA TV */
+/* ========================= */
+
+@media (min-width: 1600px) {
+    :root {
+        --sidebar-width: 18vw;
+        --sidebar-min: 300px;
+        --sidebar-max: 360px;
+    }
+
+    .sidebar {
+        padding: 14px 12px;
+    }
+
+    .sidebar-header {
+        margin-bottom: 12px;
+    }
+
+    .sidebar-logo {
+        max-width: 250px;
+        margin: 0 auto 10px auto;
+    }
+
+    .sidebar-title {
+        font-size: 18px;
+    }
+
+    .sidebar-menu {
+        gap: 8px;
+    }
+
+    .sidebar-button,
+    .contratos-toggle,
+    .processos-toggle,
+    .fracionamento-toggle,
+    .portarias-toggle {
+        min-height: 46px;
+        padding: 10px 12px;
+        font-size: 16px;
+        line-height: 1.15;
+        text-align: center;
+    }
+
+    .contratos-subbutton,
+    .processos-subbutton,
+    .fracionamento-subbutton,
+    .portarias-subbutton {
+        padding: 9px 10px;
+        font-size: 14px;
+        line-height: 1.15;
+        text-align: center;
+    }
+
+    .home-container {
+        background-position: center center;
+        background-size: contain;
+    }
+}
