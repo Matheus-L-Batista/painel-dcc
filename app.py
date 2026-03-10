@@ -203,8 +203,8 @@ def atualizar_menu(
             pathname=pathname,
             expandido=contratos_expandido,
             links=[
-                {"label": "Status do Contrato", "href": "/contratos"},
-                {"label": "Extrato do Contrato", "href": "/extrato-contrato"},
+                {"label": "Contratos Vigentes", "href": "/contratos"},
+                {"label": "Detalhes Contratuais", "href": "/extrato-contrato"},
             ],
         )
     )
@@ -228,8 +228,8 @@ def atualizar_menu(
             pathname=pathname,
             expandido=processos_expandido,
             links=[
-                {"label": "Processos de Compras", "href": "/processos-de-compras"},
-                {"label": "Status do Processo", "href": "/statusdoprocesso"},
+                {"label": "Detalhes dos Processos de Compras", "href": "/processos-de-compras"},
+                {"label": "Andamento dos Processos", "href": "/statusdoprocesso"},
             ],
         )
     )

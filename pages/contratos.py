@@ -22,6 +22,7 @@ from pytz import timezone
 import os
 import threading
 import pickle
+import re
 
 
 # --------------------------------------------------
@@ -121,17 +122,25 @@ def carregar_dados_contratos():
 
     hoje = datetime.now().date()
 
-    def calcular_status(data_termino_exec):
-        if pd.isna(data_termino_exec):
-            return ""
-        dias = (data_termino_exec.date() - hoje).days
-        if dias > 10:
-            return "Vigente"
-        if dias < 0:
-            return "Vencido"
-        return "Próximo do Vencimento"
+    def calcular_status(data_termino_vig):
+        if pd.isna(data_termino_vig):
+            return "", None, ""
 
-    df["Status da Vigência"] = df["Término da Execução"].apply(calcular_status)
+        dias = (data_termino_vig.date() - hoje).days
+
+        if dias <= 0:
+            return "Vencido", dias, "Vencido"
+        if dias <= 60:
+            return f"Vence em {dias} dias", dias, "Próximo do Vencimento"
+        return "Vigente", dias, "Vigente"
+
+    (
+        df["Status da Vigência"],
+        df["dias_restantes"],
+        df["Categoria Status"],
+    ) = zip(*df["Término da Vigência"].apply(calcular_status))
+
+    df = df[df["Categoria Status"] != "Vencido"].copy()
 
     # Formata datas para string dd/mm/aaaa para exibição
     for col in ["Início da Vigência", "Término da Execução", "Término da Vigência"]:
@@ -273,12 +282,13 @@ def filtrar_contratos(df_base, contrato_texto, objeto_texto, setor, grupo, empre
     if status_vig:
         if isinstance(status_vig, str):
             status_vig = [status_vig]
-        dff = dff[dff["Status da Vigência"].isin(status_vig)]
+        dff = dff[dff["Categoria Status"].isin(status_vig)]
 
-    dff = dff[dff["Status da Vigência"].astype(str).str.strip() != ""]
+    dff = dff[dff["Categoria Status"].astype(str).str.strip() != ""]
+    dff = dff[dff["Categoria Status"] != "Vencido"]
 
-    dff["_termino_exec_dt"] = pd.to_datetime(dff["Término da Execução"], dayfirst=True, errors="coerce")
-    dff = dff.sort_values("_termino_exec_dt", ascending=False).drop(columns=["_termino_exec_dt"])
+    dff["_termino_vig_dt"] = pd.to_datetime(dff["Término da Vigência"], dayfirst=True, errors="coerce")
+    dff = dff.sort_values("_termino_vig_dt", ascending=True).drop(columns=["_termino_vig_dt"])
 
     return dff
 
@@ -432,9 +442,8 @@ layout = html.Div(
                                 dcc.Dropdown(
                                     id="filtro_status_vig",
                                     options=[
-                                        {"label": "Vigente", "value": "Vigente"},
+                                        {"label": "Vigentes", "value": "Vigente"},
                                         {"label": "Próximo do Vencimento", "value": "Próximo do Vencimento"},
-                                        {"label": "Vencido", "value": "Vencido"},
                                     ],
                                     value=[],
                                     placeholder="Selecione um ou mais status...",
@@ -480,13 +489,12 @@ layout = html.Div(
         dash_table.DataTable(
             id="tabela_contratos",
             columns=[
-                {"name": "Contrato", "id": "Contrato_Link", "type": "text", "presentation": "markdown"},
+                {"name": "Nº do Contrato e Link", "id": "Contrato_Link", "type": "text", "presentation": "markdown"},
                 {"name": "Setor", "id": "Setor"},
                 {"name": "Grupo", "id": "Grupo"},
                 {"name": "Objeto", "id": "Objeto"},
                 {"name": "Empresa Contratada", "id": "Empresa Contratada"},
                 {"name": "Início da Vigência", "id": "Início da Vigência"},
-                {"name": "Término da Execução", "id": "Término da Execução"},
                 {"name": "Término da Vigência", "id": "Término da Vigência"},
                 {"name": "Status da Vigência", "id": "Status da Vigência"},
             ],
@@ -524,9 +532,13 @@ layout = html.Div(
             style_data_conditional=[
                 {"if": {"row_index": "odd"}, "backgroundColor": "#f0f0f0"},
                 {"if": {"row_index": "even"}, "backgroundColor": "white"},
-                {"if": {"filter_query": '{Status da Vigência} = "Vencido"'}, "backgroundColor": "#ffcccc", "color": "black"},
                 {
-                    "if": {"filter_query": '{Status da Vigência} = "Próximo do Vencimento"'},
+                    "if": {"filter_query": "{dias_restantes} > 0 && {dias_restantes} <= 30"},
+                    "backgroundColor": "#ffcccc",
+                    "color": "black",
+                },
+                {
+                    "if": {"filter_query": "{dias_restantes} > 30 && {dias_restantes} <= 60"},
                     "backgroundColor": "#ffffcc",
                     "color": "black",
                 },
@@ -606,7 +618,7 @@ def atualizar_tabela_contratos(_reload, contrato_texto, objeto_texto, setor, gru
         dff["Contrato_Link"] = dff.apply(
             lambda row: (
                 f'<a href="{row["Link Comprasnet"]}" target="_blank" '
-                f'style="color: #0b2b57; text-decoration: none; font-weight: bold;">'
+                f'style="color: #0b2b57; text-decoration: underline; font-weight: bold;">'
                 f'{row["Contrato"]}</a>'
             )
             if pd.notna(row["Link Comprasnet"])
@@ -625,9 +637,12 @@ def atualizar_tabela_contratos(_reload, contrato_texto, objeto_texto, setor, gru
         "Objeto",
         "Empresa Contratada",
         "Início da Vigência",
-        "Término da Execução",
         "Término da Vigência",
         "Status da Vigência",
+        "dias_restantes",
+        "Categoria Status",
+        "Contrato",
+        "Link Comprasnet",
     ]
     cols = [c for c in cols if c in dff.columns]
 
@@ -834,7 +849,6 @@ def gerar_pdf_contratos(n, dados_contratos):
         "Objeto",
         "Empresa Contratada",
         "Início da Vigência",
-        "Término da Execução",
         "Término da Vigência",
         "Status da Vigência",
     ]
@@ -853,15 +867,14 @@ def gerar_pdf_contratos(n, dados_contratos):
         table_data.append([wrap_data(row[c]) for c in cols])
 
     col_widths = [
-        0.8 * inch,
         0.9 * inch,
         0.9 * inch,
-        2.2 * inch,
-        1.8 * inch,
+        0.9 * inch,
+        2.5 * inch,
+        1.9 * inch,
         1.0 * inch,
         1.1 * inch,
-        1.1 * inch,
-        1.1 * inch,
+        1.3 * inch,
     ]
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -882,12 +895,16 @@ def gerar_pdf_contratos(n, dados_contratos):
 
     for i, status in enumerate(status_values, 1):
         status_str = str(status).strip().lower()
-        if "vencido" in status_str:
-            table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffcccc")))
-            table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.HexColor("#cc0000")))
-        elif "próximo do vencimento" in status_str or "proximo do vencimento" in status_str:
-            table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffffcc")))
-            table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.HexColor("#cc8800")))
+        if "vence em" in status_str:
+            match = re.search(r"(\d+)", status_str)
+            dias = int(match.group(1)) if match else None
+
+            if dias is not None and 1 <= dias <= 30:
+                table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffcccc")))
+                table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.black))
+            elif dias is not None and 31 <= dias <= 60:
+                table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffffcc")))
+                table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.black))
 
     tbl.setStyle(TableStyle(table_styles))
     story.append(tbl)
