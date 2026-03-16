@@ -209,32 +209,25 @@ def atualizar_menu(
         )
     )
 
+    
     # =========================
-    # Processos
+    # Processos (botão direto)
     # =========================
-    processos_paths = ["/processos-de-compras", "/statusdoprocesso"]
-    processos_expandido = grupo_expandido(pathname, processos_paths, processos_open)
+    class_name = (
+        "sidebar-button sidebar-button-active"
+        if pathname == "/processos-de-compras"
+        else "sidebar-button"
+    )
 
     itens.append(
-        montar_grupo(
-            titulo="Processos",
-            btn_id="btn-processos",
-            box_id="box-processos",
-            container_class="processos-container",
-            toggle_class="processos-toggle",
-            content_class="processos-content",
-            subbutton_class="processos-subbutton",
-            subbutton_active_class="processos-subbutton-active",
-            pathname=pathname,
-            expandido=processos_expandido,
-            links=[
-                {"label": "Detalhes dos Processos de Compras", "href": "/processos-de-compras"},
-                {"label": "Andamento dos Processos", "href": "/statusdoprocesso"},
-            ],
+        dcc.Link(
+            "Processos",
+            href="/processos-de-compras",
+            className=class_name,
         )
     )
 
-    # =========================
+# =========================
     # Fracionamento
     # =========================
     fracionamento_paths = ["/fracionamento_pdm", "/fracionamento_catser"]
