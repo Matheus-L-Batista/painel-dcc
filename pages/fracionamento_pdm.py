@@ -53,7 +53,6 @@ COL_VALOR_EMPENHADO_ORIG = "Unnamed: 7"
 # Limite da dispensa 2026
 VALOR_LIMITE_2026 = 65492.11
 
-
 # --------------------------------------------------
 # Carga e tratamento dos dados
 # --------------------------------------------------
@@ -67,7 +66,6 @@ def carregar_dados_limite_pdm():
     if COL_DESC_ORIG not in df.columns:
         df[COL_DESC_ORIG] = ""
 
-    # Normaliza PDM para 5 dígitos
     df[COL_PDM] = (
         df[COL_PDM]
         .astype(str)
@@ -87,7 +85,9 @@ def carregar_dados_limite_pdm():
     else:
         df["Valor Empenhado"] = 0.0
 
-    df["Limite da Dispensa"] = VALOR_LIMITE_2026
+    # Usa o limite de 2026
+    valor_limite = VALOR_LIMITE_2026
+    df["Limite da Dispensa"] = valor_limite
     df["Saldo para contratação"] = df["Limite da Dispensa"] - df["Valor Empenhado"]
 
     df = df.rename(columns={COL_DESC_ORIG: "Descrição"})
@@ -105,7 +105,7 @@ _DF_CACHE_AT = None
 
 _CACHE_DIR = os.path.join(
     os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
-    ".cache_pdm",
+    ".cache_pdm"
 )
 os.makedirs(_CACHE_DIR, exist_ok=True)
 _CACHE_FILE = os.path.join(_CACHE_DIR, "df_pdm.pkl")
@@ -201,20 +201,65 @@ def pdms_unicos(df_base: pd.DataFrame):
     return sorted(
         c
         for c in df_base[COL_PDM].dropna().unique()
-        if isinstance(c, str) and c.strip() and c.strip() != "00000"
+        if isinstance(c, str)
+        and c.strip() != ""
+        and c.strip() != "00000"
     )
 
 
 # --------------------------------------------------
 # Estilos
 # --------------------------------------------------
-botao_style = {
+dropdown_style = {
+    "color": "black",
+    "width": "100%",
+    "marginBottom": "6px",
+    "whiteSpace": "normal",
+}
+
+botao_limpar_style = {
+    "backgroundColor": "#9ca3af",
+    "color": "white",
+    "border": "1px solid #9ca3af",
+    "borderRadius": "4px",
+    "padding": "6px 12px",
+    "cursor": "pointer",
+    "fontWeight": "bold",
+}
+
+botao_atualizar_style = {
     "backgroundColor": "#0b2b57",
     "color": "white",
     "border": "1px solid #0b2b57",
     "borderRadius": "4px",
     "padding": "6px 12px",
     "cursor": "pointer",
+    "fontWeight": "bold",
+}
+
+botao_pdf_style = {
+    "backgroundColor": "#d92d20",
+    "color": "white",
+    "border": "1px solid #d92d20",
+    "borderRadius": "4px",
+    "padding": "6px 12px",
+    "cursor": "pointer",
+    "fontWeight": "bold",
+}
+
+card_padrao_style = {
+    "border": "1px solid #bfdbfe",
+    "borderRadius": "8px",
+    "padding": "10px 16px",
+    "backgroundColor": "#ffffff",
+    "minWidth": "180px",
+    "width": "180px",
+    "height": "70px",
+    "boxShadow": "0 1px 2px rgba(0,0,0,0.06)",
+    "fontSize": "12px",
+    "display": "flex",
+    "flexDirection": "column",
+    "justifyContent": "center",
 }
 
 # --------------------------------------------------
@@ -226,14 +271,11 @@ layout = html.Div(
         "flexDirection": "row",
         "width": "100%",
         "gap": "10px",
-        "background": (
-            "linear-gradient(to bottom, #f5f5f5 0, #f5f5f5 33%, "
-            "white 33%, white 100%)"
-        ),
+        "backgroundColor": "white",
     },
     children=[
         dcc.Location(id="url"),
-        # Coluna esquerda
+        # Coluna esquerda (texto)
         html.Div(
             id="coluna_esquerda_pdm",
             style={
@@ -243,7 +285,7 @@ layout = html.Div(
                 "minWidth": "280px",
                 "fontSize": "13px",
                 "textAlign": "justify",
-                "backgroundColor": "#f0f4fa",
+                "backgroundColor": "white",
             },
             children=[
                 html.P("Prezado requisitante,"),
@@ -273,8 +315,8 @@ layout = html.Div(
                     "de Material do Governo federal; ou"
                 ),
                 html.P(
-                    "II - à descrição dos serviços ou das obras, constante "
-                    "do Sistema de Catalogação de Serviços ou de Obras do "
+                    "II - à descrição dos serviços ou das obras, constante do "
+                    "Sistema de Catalogação de Serviços ou de Obras do "
                     "Governo federal. (NR)"
                 ),
                 html.Br(),
@@ -289,8 +331,8 @@ layout = html.Div(
                             target="_blank",
                             style={"color": "#1d4ed8", "textDecoration": "underline"},
                         ),
-                        ", informar o número do CATMAT. Exemplo para o CATMAT 605322: a consulta "
-                        "retornará PDM: 8320. Esse é o número que deverá ser considerado.",
+                        ", informar o número do CATSER. Exemplo para o CATSER 123456: a consulta "
+                        "retornará os dados do serviço. Esse é o número que deverá ser considerado.",
                     ]
                 ),
                 html.Br(),
@@ -320,11 +362,109 @@ layout = html.Div(
                 ),
             ],
         ),
-        # Coluna direita
+        # Coluna direita (filtros + tabela)
         html.Div(
             id="coluna_direita_pdm",
             style={"flex": "2 1 67%", "padding": "5px", "minWidth": "400px"},
             children=[
+                html.Div(
+                    style={
+                        "backgroundColor": "#0b2b57",
+                        "borderRadius": "8px",
+                        "padding": "12px 14px",
+                        "marginBottom": "10px",
+                        "display": "flex",
+                        "alignItems": "center",
+                        "justifyContent": "space-between",
+                        "gap": "16px",
+                        "flexWrap": "wrap",
+                    },
+                    children=[
+                        html.Div(
+                            style={
+                                "display": "flex",
+                                "flexDirection": "column",
+                                "gap": "3px",
+                                "maxWidth": "520px",
+                            },
+                            children=[
+                                html.H4(
+                                    "Limite de Gasto – Itajubá por PDM",
+                                    style={"margin": "0px", "color": "white"},
+                                ),
+                                html.Div(
+                                    children=[
+                                        html.Span(
+                                            "O valor global do processo de compra não poderá exceder esse limite."
+                                        ),
+                                        html.Br(),
+                                        html.Span(
+                                            "O valor de cada item não poderá exceder o Saldo para Contratação."
+                                        ),
+                                    ],
+                                    style={"color": "#fecaca", "fontSize": "12px"},
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "12px",
+                                "flexWrap": "wrap",
+                            },
+                            children=[
+                                html.Div(
+                                    style=card_padrao_style,
+                                    children=[
+                                        html.Div(
+                                            "Limite da dispensa (2026)",
+                                            style={
+                                                "fontWeight": "bold",
+                                                "color": "#374151",
+                                                "marginBottom": "2px",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                        html.Div(
+                                            "R$ 65.492,11",
+                                            style={
+                                                "fontSize": "18px",
+                                                "fontWeight": "bold",
+                                                "color": "#166534",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                html.Div(
+                                    style=card_padrao_style,
+                                    children=[
+                                        html.Div(
+                                            "Data da consulta",
+                                            style={
+                                                "fontWeight": "bold",
+                                                "color": "#374151",
+                                                "marginBottom": "2px",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                        html.Div(
+                                            id="card_data_consulta_pdm",
+                                            children=date.today().strftime("%d/%m/%Y"),
+                                            style={
+                                                "fontSize": "18px",
+                                                "fontWeight": "bold",
+                                                "color": "#111827",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
                 html.Div(
                     id="barra_filtros_limite_itajuba_pdm",
                     className="filtros-sticky",
@@ -339,14 +479,18 @@ layout = html.Div(
                             },
                             children=[
                                 html.Div(
-                                    style={"minWidth": "220px", "flex": "1 1 260px", "maxHeight": "60px"},
+                                    style={
+                                        "minWidth": "220px",
+                                        "flex": "1 1 260px",
+                                        "maxHeight": "60px",
+                                    },
                                     children=[
                                         html.Label("PDM (digitação)"),
                                         dcc.Input(
                                             id="filtro_pdm_texto_itajuba",
                                             type="text",
                                             placeholder=(
-                                                "Digite parte do PDM, selecione na lista e, "
+                                                "Digite parte do CATSER, selecione na lista e, "
                                                 "após a seleção, apague o texto digitado."
                                             ),
                                             style={"width": "100%", "marginBottom": "6px"},
@@ -355,7 +499,7 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Segunda linha: checklist PDM
+                        # Segunda linha: checklist CATSER
                         html.Div(
                             style={
                                 "marginTop": "4px",
@@ -389,110 +533,48 @@ layout = html.Div(
                                                 "rowGap": "2px",
                                             },
                                             inputStyle={"marginRight": "4px"},
-                                            labelStyle={"display": "inline-block", "width": "18%", "fontSize": "11px"},
+                                            labelStyle={
+                                                "display": "inline-block",
+                                                "width": "18%",
+                                                "fontSize": "11px",
+                                            },
                                         ),
                                     ],
                                 ),
                             ],
                         ),
-                        # Terceira linha: título + cards + botões
+                        # Terceira linha: botões + status
                         html.Div(
                             style={
-                                "marginTop": "8px",
+                                "marginTop": "10px",
                                 "display": "flex",
                                 "alignItems": "center",
-                                "gap": "16px",
+                                "gap": "10px",
                                 "flexWrap": "wrap",
-                                "justifyContent": "space-between",
                             },
                             children=[
-                                html.Div(
-                                    style={"display": "flex", "flexDirection": "column", "gap": "2px", "maxWidth": "520px"},
-                                    children=[
-                                        html.H4("Limite de Gasto – Itajubá por PDM", style={"margin": "0px"}),
-                                        html.Div(
-                                            children=[
-                                                html.Span("O valor global do processo de compra não poderá exceder esse limite."),
-                                                html.Br(),
-                                                html.Span("O valor de cada item não poderá exceder o Saldo para Contratação."),
-                                            ],
-                                            style={"color": "red", "fontSize": "12px"},
-                                        ),
-                                    ],
+                                html.Button(
+                                    "Limpar filtros",
+                                    id="btn_limpar_filtros_limite_itajuba_pdm_pdm",
+                                    n_clicks=0,
+                                    style=botao_limpar_style,
                                 ),
-                                # CARD LIMITE
-                                html.Div(
-                                    style={
-                                        "border": "1px solid #d1d5db",
-                                        "borderRadius": "6px",
-                                        "padding": "6px 10px",
-                                        "backgroundColor": "#ecfdf5",
-                                        "minWidth": "180px",
-                                        "boxShadow": "0 1px 2px rgba(0,0,0,0.05)",
-                                        "fontSize": "12px",
-                                    },
-                                    children=[
-                                        html.Div(
-                                            "Limite da dispensa (2026)",
-                                            style={"fontWeight": "bold", "color": "#166534", "marginBottom": "2px", "textAlign": "center"},
-                                        ),
-                                        html.Div(
-                                            "R$ 65.492,11",
-                                            style={"fontSize": "18px", "fontWeight": "bold", "color": "#14532d", "textAlign": "center"},
-                                        ),
-                                    ],
+                                html.Button(
+                                    "Atualizar Dados",
+                                    id="btn_reload_pdm",
+                                    n_clicks=0,
+                                    style=botao_atualizar_style,
                                 ),
-                                # CARD DATA
-                                html.Div(
-                                    style={
-                                        "border": "1px solid #d1d5db",
-                                        "borderRadius": "6px",
-                                        "padding": "6px 10px",
-                                        "backgroundColor": "#f3f4f6",
-                                        "minWidth": "180px",
-                                        "boxShadow": "0 1px 2px rgba(0,0,0,0.05)",
-                                        "fontSize": "12px",
-                                    },
-                                    children=[
-                                        html.Div(
-                                            "Data da consulta",
-                                            style={"fontWeight": "bold", "color": "#111827", "marginBottom": "2px", "textAlign": "center"},
-                                        ),
-                                        html.Div(
-                                            id="card_data_consulta_pdm",
-                                            children=date.today().strftime("%d/%m/%Y"),
-                                            style={"fontSize": "16px", "fontWeight": "bold", "color": "#111827", "textAlign": "center"},
-                                        ),
-                                    ],
+                                html.Button(
+                                    "Baixar Relatório PDF",
+                                    id="btn_download_relatorio_limite_itajuba_pdm_pdm",
+                                    n_clicks=0,
+                                    style=botao_pdf_style,
                                 ),
-                                # Botões + status
+                                dcc.Download(id="download_relatorio_limite_itajuba_pdm"),
                                 html.Div(
-                                    style={"display": "flex", "alignItems": "center", "gap": "10px", "flexWrap": "wrap"},
-                                    children=[
-                                        html.Button(
-                                            "Limpar filtros",
-                                            id="btn_limpar_filtros_limite_itajuba_pdm",
-                                            n_clicks=0,
-                                            style=botao_style,
-                                        ),
-                                        html.Button(
-                                            "Atualizar Dados",
-                                            id="btn_reload_pdm",
-                                            n_clicks=0,
-                                            style=botao_style,
-                                        ),
-                                        html.Button(
-                                            "Baixar Relatório PDF",
-                                            id="btn_download_relatorio_limite_itajuba_pdm",
-                                            n_clicks=0,
-                                            style=botao_style,
-                                        ),
-                                        dcc.Download(id="download_relatorio_limite_itajuba_pdm"),
-                                        html.Div(
-                                            id="info-atualizacao-pdm",
-                                            style={"fontSize": "12px", "color": "#333"},
-                                        ),
-                                    ],
+                                    id="info-atualizacao-pdm",
+                                    style={"fontSize": "12px", "color": "#333"},
                                 ),
                             ],
                         ),
@@ -506,12 +588,7 @@ layout = html.Div(
                         {"name": "Valor Empenhado (R$)", "id": "Valor Empenhado_fmt"},
                         {"name": "Limite da Dispensa (R$)", "id": "Limite da Dispensa_fmt"},
                         {"name": "Saldo para contratação (R$)", "id": "Saldo para contratação_fmt"},
-                        # colunas "técnicas" (escondidas) para condição numérica
-                        {"name": "Valor Empenhado", "id": "Valor Empenhado"},
-                        {"name": "Limite da Dispensa", "id": "Limite da Dispensa"},
-                        {"name": "Saldo para contratação", "id": "Saldo para contratação"},
                     ],
-                    hidden_columns=["Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"],
                     data=[],
                     page_action="none",
                     row_selectable=False,
@@ -543,9 +620,14 @@ layout = html.Div(
                     style_data_conditional=[
                         {"if": {"row_index": "odd"}, "backgroundColor": "#f5f5f5"},
                         {
-                            "if": {"filter_query": "{Saldo para contratação} <= 0"},
+                            "if": {"filter_query": "{Saldo para contratação} < 0"},
                             "backgroundColor": "#ffcccc",
-                            "color": "#cc0000",
+                            "color": "#b42318",
+                        },
+                        {
+                            "if": {"filter_query": "{Saldo para contratação} > 0 && {Saldo para contratação} != {Limite da Dispensa}"},
+                            "backgroundColor": "#dcfce7",
+                            "color": "#166534",
                         },
                     ],
                 ),
@@ -557,9 +639,8 @@ layout = html.Div(
     ],
 )
 
-
 # --------------------------------------------------
-# Callback: abrir página / interval / botão (recarrega cache + atualiza lista PDM + status)
+# Callback: abrir página / interval / botão (recarrega cache + atualiza lista CATSER + status)
 # --------------------------------------------------
 @dash.callback(
     Output("store-reload-pdm", "data"),
@@ -571,7 +652,7 @@ layout = html.Div(
     Input("btn_reload_pdm", "n_clicks"),
     State("filtro_pdm_lista_itajuba", "value"),
 )
-def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks, selecionados):
+def carregar_ao_abrir_interval_ou_recarregar_pdm(pathname, _n_intervals, n_clicks, selecionados):
     if pathname != "/fracionamento_pdm":
         raise PreventUpdate
 
@@ -579,6 +660,7 @@ def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks, s
     df, status = get_df_pdm(force=force)
 
     base = pdms_unicos(df)
+    # mantém selecionados que ainda existirem
     selecionados = selecionados or []
     selecionados_validos = [v for v in selecionados if v in base]
 
@@ -609,6 +691,7 @@ def atualizar_opcoes_pdm(pdm_texto, _reload, valores_selecionados):
         termo = str(pdm_texto).strip().lower()
         filtradas = [c for c in base if termo in str(c).lower()]
 
+    # garante selecionados na lista de opções
     valores_selecionados = valores_selecionados or []
     for v in valores_selecionados:
         if v in base and v not in filtradas:
@@ -618,7 +701,7 @@ def atualizar_opcoes_pdm(pdm_texto, _reload, valores_selecionados):
 
 
 # --------------------------------------------------
-# Callback: atualiza tabela (reage ao reload também)
+# Callback: atualiza tabela (agora reage ao reload também)
 # --------------------------------------------------
 @dash.callback(
     Output("tabela_limite_itajuba_pdm", "data"),
@@ -626,24 +709,32 @@ def atualizar_opcoes_pdm(pdm_texto, _reload, valores_selecionados):
     Input("store-reload-pdm", "data"),
     Input("filtro_pdm_lista_itajuba", "value"),
 )
-def atualizar_tabela_limite_itajuba_pdm(_reload, pdm_lista):
+def atualizar_tabela_limite_itajuba_pdm_pdm(_reload, pdm_lista):
     df_base, _ = get_df_pdm(force=False)
     dff = df_base.copy() if df_base is not None else pd.DataFrame()
 
     if dff.empty:
         return [], []
 
+    # Remove sempre o CATSER 00000
     dff = dff[dff[COL_PDM] != "00000"]
 
     if pdm_lista:
         dff = dff[dff[COL_PDM].isin(pdm_lista)]
 
-    cols_raw = [COL_PDM, "Descrição", "Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]
-    for c in cols_raw:
+    cols_tabela = [
+        COL_PDM,
+        "Descrição",
+        "Valor Empenhado",
+        "Limite da Dispensa",
+        "Saldo para contratação",
+    ]
+
+    for c in cols_tabela:
         if c not in dff.columns:
             dff[c] = pd.NA
 
-    dff_display = dff[cols_raw].copy()
+    dff_display = dff[cols_tabela].copy()
 
     def fmt_moeda(v):
         if pd.isna(v):
@@ -654,28 +745,29 @@ def atualizar_tabela_limite_itajuba_pdm(_reload, pdm_lista):
     dff_display["Limite da Dispensa_fmt"] = dff_display["Limite da Dispensa"].apply(fmt_moeda)
     dff_display["Saldo para contratação_fmt"] = dff_display["Saldo para contratação"].apply(fmt_moeda)
 
-    # DataTable recebe também os raws (escondidos) para permitir filter_query numérico
-    cols_out = [
+    cols_tabela_display = [
         COL_PDM,
         "Descrição",
         "Valor Empenhado_fmt",
         "Limite da Dispensa_fmt",
         "Saldo para contratação_fmt",
-        "Valor Empenhado",
-        "Limite da Dispensa",
-        "Saldo para contratação",
     ]
 
-    return dff_display[cols_out].to_dict("records"), dff.to_dict("records")
+    # Mantém as colunas numéricas brutas no payload da tabela para que
+    # as regras de colorização por filter_query funcionem corretamente,
+    # sem exibir colunas extras ao usuário.
+    dff_payload = dff_display.copy()
+
+    return (
+        dff_payload.to_dict("records"),
+        dff.to_dict("records"),
+    )
 
 
-# --------------------------------------------------
-# Callback: limpar filtros
-# --------------------------------------------------
 @dash.callback(
     Output("filtro_pdm_texto_itajuba", "value"),
     Output("filtro_pdm_lista_itajuba", "value"),
-    Input("btn_limpar_filtros_limite_itajuba_pdm", "n_clicks"),
+    Input("btn_limpar_filtros_limite_itajuba_pdm_pdm", "n_clicks"),
     prevent_initial_call=True,
 )
 def limpar_filtros_limite_itajuba_pdm(_n):
@@ -685,49 +777,46 @@ def limpar_filtros_limite_itajuba_pdm(_n):
 # --------------------------------------------------
 # PDF
 # --------------------------------------------------
-wrap_style_data_pdm = ParagraphStyle(
-    name="wrap_limite_itajuba_pdm_data",
+wrap_style_data = ParagraphStyle(
+    name="wrap_limite_itajuba_data",
     fontSize=7,
     leading=9,
-    spaceAfter=4,
     alignment=TA_CENTER,
     textColor=colors.black,
 )
 
-wrap_style_header_pdm = ParagraphStyle(
-    name="wrap_limite_itajuba_pdm_header",
+wrap_style_header = ParagraphStyle(
+    name="wrap_limite_itajuba_header",
     fontSize=7,
     leading=9,
-    spaceAfter=4,
     alignment=TA_CENTER,
     textColor=colors.white,
 )
 
-wrap_style_desc_pdm = ParagraphStyle(
-    name="wrap_limite_itajuba_pdm_desc",
+wrap_style_desc = ParagraphStyle(
+    name="wrap_limite_itajuba_desc",
     fontSize=7,
     leading=9,
-    spaceAfter=4,
     alignment=TA_LEFT,
     textColor=colors.black,
 )
 
 
-def wrap_data_pdm(text):
-    return Paragraph(str(text), wrap_style_data_pdm)
+def wrap_data(text):
+    return Paragraph(str(text), wrap_style_data)
 
 
-def wrap_header_pdm(text):
-    return Paragraph(str(text), wrap_style_header_pdm)
+def wrap_header(text):
+    return Paragraph(str(text), wrap_style_header)
 
 
-def wrap_desc_pdm(text):
-    return Paragraph(str(text), wrap_style_desc_pdm)
+def wrap_desc(text):
+    return Paragraph(str(text), wrap_style_desc)
 
 
 @dash.callback(
     Output("download_relatorio_limite_itajuba_pdm", "data"),
-    Input("btn_download_relatorio_limite_itajuba_pdm", "n_clicks"),
+    Input("btn_download_relatorio_limite_itajuba_pdm_pdm", "n_clicks"),
     State("store_dados_limite_itajuba_pdm", "data"),
     prevent_initial_call=True,
 )
@@ -737,15 +826,9 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
 
     df = pd.DataFrame(dados)
 
-    # Remove PDM 00000 também no PDF
+    # Garante também no PDF que o CATSER 00000 não apareça
     if COL_PDM in df.columns:
         df = df[df[COL_PDM] != "00000"]
-
-    # como store guarda raws, garante as colunas esperadas
-    cols = [COL_PDM, "Descrição", "Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]
-    for c in cols:
-        if c not in df.columns:
-            df[c] = ""
 
     buffer = BytesIO()
     pagesize = portrait(A4)
@@ -762,12 +845,12 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
     story = []
 
     tz_brasilia = timezone("America/Sao_Paulo")
-    data_hora_brasilia = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
+    data_hora = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
 
     story.append(
         Table(
             [[Paragraph(
-                data_hora_brasilia,
+                data_hora,
                 ParagraphStyle("data_topo", fontSize=9, alignment=TA_RIGHT, textColor="#333333"),
             )]],
             colWidths=[pagesize[0] - 0.6 * inch],
@@ -792,10 +875,13 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
 
     instituicao = Paragraph(
         texto_instituicao,
-        ParagraphStyle("instituicao_pdm", alignment=TA_CENTER, leading=14),
+        ParagraphStyle("instituicao", alignment=TA_CENTER, leading=14),
     )
 
-    cabecalho = Table([[logo_esq, instituicao, logo_dir]], colWidths=[1.2 * inch, 3.5 * inch, 1.2 * inch])
+    cabecalho = Table(
+        [[logo_esq, instituicao, logo_dir]],
+        colWidths=[1.2 * inch, 3.5 * inch, 1.2 * inch],
+    )
     cabecalho.setStyle(
         TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -808,45 +894,48 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
     story.append(cabecalho)
     story.append(Spacer(1, 0.25 * inch))
 
-    titulo_texto = "Consulta ao Fracionamento de Despesa 2026 - PDM (Material): UASG: 153030 - Campus Itajubá"
-    story.append(
-        Paragraph(
-            titulo_texto,
-            ParagraphStyle("titulo", alignment=TA_CENTER, fontSize=10, leading=14, textColor=colors.black),
-        )
+    titulo = Paragraph(
+        "Consulta ao Fracionamento de Despesa 2026 - PDM (Material): UASG: 153030 - Campus Itajubá",
+        ParagraphStyle("titulo", alignment=TA_CENTER, fontSize=10, leading=14, textColor=colors.black),
     )
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(titulo)
+    story.append(Spacer(1, 0.2 * inch))
     story.append(Paragraph(f"Total de registros: {len(df)}", styles["Normal"]))
-    story.append(Spacer(1, 0.1 * inch))
+    story.append(Spacer(1, 0.15 * inch))
 
-    def fmt_moeda_pdf(v):
+    cols = [COL_PDM, "Descrição", "Valor Empenhado", "Limite da Dispensa", "Saldo para contratação"]
+    for c in cols:
+        if c not in df.columns:
+            df[c] = ""
+
+    def fmt_moeda(v):
         if pd.isna(v):
             return ""
-        return "R$ " + (f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        return "R$ " + (f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
     df_pdf = df.copy()
-    for col in cols[2:]:
-        df_pdf[col] = df_pdf[col].apply(fmt_moeda_pdf)
+    for c in cols[2:]:
+        df_pdf[c] = df_pdf[c].apply(fmt_moeda)
 
-    header = [wrap_header_pdm(col) for col in cols]
+    header = [wrap_header(c) for c in cols]
     table_data = [header]
 
-    saldo_values = pd.to_numeric(df["Saldo para contratação"], errors="coerce").fillna(0).tolist()
+    saldo_values = df["Saldo para contratação"].fillna(0).tolist() if "Saldo para contratação" in df.columns else [0]*len(df)
 
     for _, row in df_pdf[cols].iterrows():
         row_data = []
         for i, c in enumerate(cols):
             if i == 1:
-                row_data.append(wrap_desc_pdm(row[c]))
+                row_data.append(wrap_desc(row[c]))
             else:
-                row_data.append(wrap_data_pdm(row[c]))
+                row_data.append(wrap_data(row[c]))
         table_data.append(row_data)
 
     col_widths = [
-        0.8 * inch,  # PDM
+        0.8 * inch,  # CATSER
         2.5 * inch,  # Descrição
         1.0 * inch,  # Valor Empenhado
-        1.0 * inch,  # Limite
+        1.0 * inch,  # Limite da Dispensa
         1.0 * inch,  # Saldo
     ]
 
@@ -863,10 +952,10 @@ def gerar_pdf_limite_itajuba_pdm(n, dados):
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
     ]
 
-    for row_idx, saldo in enumerate(saldo_values, 1):
+    for i, saldo in enumerate(saldo_values, 1):
         if saldo <= 0:
-            table_styles.append(("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#ffcccc")))
-            table_styles.append(("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.HexColor("#cc0000")))
+            table_styles.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffcccc")))
+            table_styles.append(("TEXTCOLOR", (0, i), (-1, i), colors.HexColor("#cc0000")))
 
     tbl.setStyle(TableStyle(table_styles))
     story.append(tbl)

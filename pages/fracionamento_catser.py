@@ -217,13 +217,49 @@ dropdown_style = {
     "whiteSpace": "normal",
 }
 
-botao_style = {
+botao_limpar_style = {
+    "backgroundColor": "#9ca3af",
+    "color": "white",
+    "border": "1px solid #9ca3af",
+    "borderRadius": "4px",
+    "padding": "6px 12px",
+    "cursor": "pointer",
+    "fontWeight": "bold",
+}
+
+botao_atualizar_style = {
     "backgroundColor": "#0b2b57",
     "color": "white",
     "border": "1px solid #0b2b57",
     "borderRadius": "4px",
     "padding": "6px 12px",
     "cursor": "pointer",
+    "fontWeight": "bold",
+}
+
+botao_pdf_style = {
+    "backgroundColor": "#d92d20",
+    "color": "white",
+    "border": "1px solid #d92d20",
+    "borderRadius": "4px",
+    "padding": "6px 12px",
+    "cursor": "pointer",
+    "fontWeight": "bold",
+}
+
+card_padrao_style = {
+    "border": "1px solid #bfdbfe",
+    "borderRadius": "8px",
+    "padding": "10px 16px",
+    "backgroundColor": "#ffffff",
+    "minWidth": "180px",
+    "width": "180px",
+    "height": "70px",
+    "boxShadow": "0 1px 2px rgba(0,0,0,0.06)",
+    "fontSize": "12px",
+    "display": "flex",
+    "flexDirection": "column",
+    "justifyContent": "center",
 }
 
 # --------------------------------------------------
@@ -235,10 +271,7 @@ layout = html.Div(
         "flexDirection": "row",
         "width": "100%",
         "gap": "10px",
-        "background": (
-            "linear-gradient(to bottom, #f5f5f5 0, #f5f5f5 33%, "
-            "white 33%, white 100%)"
-        ),
+        "backgroundColor": "white",
     },
     children=[
         dcc.Location(id="url"),
@@ -252,7 +285,7 @@ layout = html.Div(
                 "minWidth": "280px",
                 "fontSize": "13px",
                 "textAlign": "justify",
-                "backgroundColor": "#f0f4fa",
+                "backgroundColor": "white",
             },
             children=[
                 html.P("Prezado requisitante,"),
@@ -335,6 +368,104 @@ layout = html.Div(
             style={"flex": "2 1 67%", "padding": "5px", "minWidth": "400px"},
             children=[
                 html.Div(
+                    style={
+                        "backgroundColor": "#0b2b57",
+                        "borderRadius": "8px",
+                        "padding": "12px 14px",
+                        "marginBottom": "10px",
+                        "display": "flex",
+                        "alignItems": "center",
+                        "justifyContent": "space-between",
+                        "gap": "16px",
+                        "flexWrap": "wrap",
+                    },
+                    children=[
+                        html.Div(
+                            style={
+                                "display": "flex",
+                                "flexDirection": "column",
+                                "gap": "3px",
+                                "maxWidth": "520px",
+                            },
+                            children=[
+                                html.H4(
+                                    "Limite de Gasto – Itajubá por CATSER",
+                                    style={"margin": "0px", "color": "white"},
+                                ),
+                                html.Div(
+                                    children=[
+                                        html.Span(
+                                            "O valor global do processo de compra não poderá exceder esse limite."
+                                        ),
+                                        html.Br(),
+                                        html.Span(
+                                            "O valor de cada item não poderá exceder o Saldo para Contratação."
+                                        ),
+                                    ],
+                                    style={"color": "#fecaca", "fontSize": "12px"},
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "12px",
+                                "flexWrap": "wrap",
+                            },
+                            children=[
+                                html.Div(
+                                    style=card_padrao_style,
+                                    children=[
+                                        html.Div(
+                                            "Limite da dispensa (2026)",
+                                            style={
+                                                "fontWeight": "bold",
+                                                "color": "#374151",
+                                                "marginBottom": "2px",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                        html.Div(
+                                            "R$ 65.492,11",
+                                            style={
+                                                "fontSize": "18px",
+                                                "fontWeight": "bold",
+                                                "color": "#166534",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                html.Div(
+                                    style=card_padrao_style,
+                                    children=[
+                                        html.Div(
+                                            "Data da consulta",
+                                            style={
+                                                "fontWeight": "bold",
+                                                "color": "#374151",
+                                                "marginBottom": "2px",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                        html.Div(
+                                            id="card_data_consulta_catser",
+                                            children=date.today().strftime("%d/%m/%Y"),
+                                            style={
+                                                "fontSize": "18px",
+                                                "fontWeight": "bold",
+                                                "color": "#111827",
+                                                "textAlign": "center",
+                                            },
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+                html.Div(
                     id="barra_filtros_limite_itajuba",
                     className="filtros-sticky",
                     children=[
@@ -412,143 +543,38 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Terceira linha: título + cards + botões
+                        # Terceira linha: botões + status
                         html.Div(
                             style={
-                                "marginTop": "8px",
+                                "marginTop": "10px",
                                 "display": "flex",
                                 "alignItems": "center",
-                                "gap": "16px",
+                                "gap": "10px",
                                 "flexWrap": "wrap",
-                                "justifyContent": "space-between",
                             },
                             children=[
-                                html.Div(
-                                    style={
-                                        "display": "flex",
-                                        "flexDirection": "column",
-                                        "gap": "2px",
-                                        "maxWidth": "520px",
-                                    },
-                                    children=[
-                                        html.H4(
-                                            "Limite de Gasto – Itajubá por CATSER",
-                                            style={"margin": "0px"},
-                                        ),
-                                        html.Div(
-                                            children=[
-                                                html.Span(
-                                                    "O valor global do processo de compra "
-                                                    "não poderá exceder esse limite."
-                                                ),
-                                                html.Br(),
-                                                html.Span(
-                                                    "O valor de cada item não poderá exceder "
-                                                    "o Saldo para Contratação."
-                                                ),
-                                            ],
-                                            style={"color": "red", "fontSize": "12px"},
-                                        ),
-                                    ],
+                                html.Button(
+                                    "Limpar filtros",
+                                    id="btn_limpar_filtros_limite_itajuba",
+                                    n_clicks=0,
+                                    style=botao_limpar_style,
                                 ),
-                                # CARD DO LIMITE DA DISPENSA 2026
-                                html.Div(
-                                    style={
-                                        "border": "1px solid #d1d5db",
-                                        "borderRadius": "6px",
-                                        "padding": "6px 10px",
-                                        "backgroundColor": "#ecfdf5",
-                                        "minWidth": "180px",
-                                        "boxShadow": "0 1px 2px rgba(0,0,0,0.05)",
-                                        "fontSize": "12px",
-                                    },
-                                    children=[
-                                        html.Div(
-                                            "Limite da dispensa (2026)",
-                                            style={
-                                                "fontWeight": "bold",
-                                                "color": "#166534",
-                                                "marginBottom": "2px",
-                                                "textAlign": "center",
-                                            },
-                                        ),
-                                        html.Div(
-                                            "R$ 65.492,11",
-                                            style={
-                                                "fontSize": "18px",
-                                                "fontWeight": "bold",
-                                                "color": "#14532d",
-                                                "textAlign": "center",
-                                            },
-                                        ),
-                                    ],
+                                html.Button(
+                                    "Atualizar Dados",
+                                    id="btn_reload_catser",
+                                    n_clicks=0,
+                                    style=botao_atualizar_style,
                                 ),
-                                # CARD DA DATA DA CONSULTA (atualiza automaticamente)
-                                html.Div(
-                                    style={
-                                        "border": "1px solid #d1d5db",
-                                        "borderRadius": "6px",
-                                        "padding": "6px 10px",
-                                        "backgroundColor": "#f3f4f6",
-                                        "minWidth": "180px",
-                                        "boxShadow": "0 1px 2px rgba(0,0,0,0.05)",
-                                        "fontSize": "12px",
-                                    },
-                                    children=[
-                                        html.Div(
-                                            "Data da consulta",
-                                            style={
-                                                "fontWeight": "bold",
-                                                "color": "#111827",
-                                                "marginBottom": "2px",
-                                                "textAlign": "center",
-                                            },
-                                        ),
-                                        html.Div(
-                                            id="card_data_consulta_catser",
-                                            children=date.today().strftime("%d/%m/%Y"),
-                                            style={
-                                                "fontSize": "16px",
-                                                "fontWeight": "bold",
-                                                "color": "#111827",
-                                                "textAlign": "center",
-                                            },
-                                        ),
-                                    ],
+                                html.Button(
+                                    "Baixar Relatório PDF",
+                                    id="btn_download_relatorio_limite_itajuba",
+                                    n_clicks=0,
+                                    style=botao_pdf_style,
                                 ),
-                                # Botões + status
+                                dcc.Download(id="download_relatorio_limite_itajuba"),
                                 html.Div(
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "gap": "10px",
-                                        "flexWrap": "wrap",
-                                    },
-                                    children=[
-                                        html.Button(
-                                            "Limpar filtros",
-                                            id="btn_limpar_filtros_limite_itajuba",
-                                            n_clicks=0,
-                                            style=botao_style,
-                                        ),
-                                        html.Button(
-                                            "Atualizar Dados",
-                                            id="btn_reload_catser",
-                                            n_clicks=0,
-                                            style=botao_style,
-                                        ),
-                                        html.Button(
-                                            "Baixar Relatório PDF",
-                                            id="btn_download_relatorio_limite_itajuba",
-                                            n_clicks=0,
-                                            style=botao_style,
-                                        ),
-                                        dcc.Download(id="download_relatorio_limite_itajuba"),
-                                        html.Div(
-                                            id="info-atualizacao-catser",
-                                            style={"fontSize": "12px", "color": "#333"},
-                                        ),
-                                    ],
+                                    id="info-atualizacao-catser",
+                                    style={"fontSize": "12px", "color": "#333"},
                                 ),
                             ],
                         ),
@@ -594,9 +620,14 @@ layout = html.Div(
                     style_data_conditional=[
                         {"if": {"row_index": "odd"}, "backgroundColor": "#f5f5f5"},
                         {
-                            "if": {"filter_query": "{Saldo para contratação} <= 0"},
+                            "if": {"filter_query": "{Saldo para contratação} < 0"},
                             "backgroundColor": "#ffcccc",
-                            "color": "#cc0000",
+                            "color": "#b42318",
+                        },
+                        {
+                            "if": {"filter_query": "{Saldo para contratação} > 0 && {Saldo para contratação} != {Limite da Dispensa}"},
+                            "backgroundColor": "#dcfce7",
+                            "color": "#166534",
                         },
                     ],
                 ),
@@ -722,8 +753,13 @@ def atualizar_tabela_limite_itajuba(_reload, catser_lista):
         "Saldo para contratação_fmt",
     ]
 
+    # Mantém as colunas numéricas brutas no payload da tabela para que
+    # as regras de colorização por filter_query funcionem corretamente,
+    # sem exibir colunas extras ao usuário.
+    dff_payload = dff_display.copy()
+
     return (
-        dff_display[cols_tabela_display].to_dict("records"),
+        dff_payload.to_dict("records"),
         dff.to_dict("records"),
     )
 
