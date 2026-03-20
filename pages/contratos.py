@@ -319,8 +319,7 @@ input_style = {
     "marginBottom": "6px",
 }
 
-botao_style = {
-    "backgroundColor": "#0b2b57",
+botao_base_style = {
     "color": "white",
     "padding": "8px 16px",
     "border": "none",
@@ -330,6 +329,10 @@ botao_style = {
     "fontWeight": "bold",
     "marginRight": "6px",
 }
+
+botao_limpar_style = {**botao_base_style, "backgroundColor": "#9aa0a6"}
+botao_atualizar_style = {**botao_base_style, "backgroundColor": "#0b2b57"}
+botao_pdf_style = {**botao_base_style, "backgroundColor": "#e23323"}
 
 
 # --------------------------------------------------
@@ -461,19 +464,19 @@ layout = html.Div(
                                     "Limpar filtros",
                                     id="btn_limpar_filtros_contratos",
                                     n_clicks=0,
-                                    style=botao_style,
+                                    style=botao_limpar_style,
                                 ),
                                 html.Button(
                                     "Atualizar Dados",
                                     id="btn_reload_contratos",
                                     n_clicks=0,
-                                    style=botao_style,
+                                    style=botao_atualizar_style,
                                 ),
                                 html.Button(
                                     "Baixar Relatório PDF",
                                     id="btn_download_relatorio_contratos",
                                     n_clicks=0,
-                                    style=botao_style,
+                                    style=botao_pdf_style,
                                 ),
                                 dcc.Download(id="download_relatorio_contratos"),
                                 html.Div(

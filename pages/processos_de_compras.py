@@ -241,7 +241,6 @@ dropdown_style = {
 # Estilo unificado dos botões
 # --------------------------------------------------
 botao_style = {
-    "backgroundColor": "#0b2b57",
     "color": "white",
     "padding": "8px 16px",
     "border": "none",
@@ -250,6 +249,21 @@ botao_style = {
     "fontSize": "12px",
     "fontWeight": "bold",
     "marginRight": "6px",
+}
+
+botao_limpar_style = {
+    **botao_style,
+    "backgroundColor": "#9aa0a6",
+}
+
+botao_atualizar_style = {
+    **botao_style,
+    "backgroundColor": "#0b2b57",
+}
+
+botao_pdf_style = {
+    **botao_style,
+    "backgroundColor": "#d93025",
 }
 
 
@@ -422,8 +436,8 @@ layout = html.Div(
                                 # Filtro: Modalidade
                                 html.Div(
                                     style={
-                                        "minWidth": "220px",
-                                        "flex": "1 1 260px",
+                                        "minWidth": "180px",
+                                        "flex": "0 1 220px",
                                     },
                                     children=[
                                         html.Label("Modalidade"),
@@ -441,8 +455,8 @@ layout = html.Div(
                                 # Filtro: Status
                                 html.Div(
                                     style={
-                                        "minWidth": "220px",
-                                        "flex": "1 1 260px",
+                                        "minWidth": "180px",
+                                        "flex": "0 1 220px",
                                     },
                                     children=[
                                         html.Label("Status"),
@@ -460,8 +474,8 @@ layout = html.Div(
                                 # Filtro: Classificação (Não Concluídos)
                                 html.Div(
                                     style={
-                                        "minWidth": "260px",
-                                        "flex": "2 1 320px",
+                                        "minWidth": "240px",
+                                        "flex": "0 1 320px",
                                     },
                                     children=[
                                         html.Label(
@@ -480,39 +494,50 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        # Coluna direita: botões
+                        # Coluna direita: informação + botões
                         html.Div(
                             style={
                                 "display": "flex",
-                                "flexWrap": "wrap",
+                                "flexDirection": "column",
                                 "gap": "6px",
-                                "justifyContent": "flex-end",
-                                "alignItems": "center",
+                                "alignItems": "flex-end",
+                                "justifyContent": "flex-start",
                             },
                             children=[
                                 html.Div(
                                     id="info-atualizacao-proc",
-                                    style={"fontSize": "12px", "color": "#333", "marginRight": "8px"},
+                                    style={"fontSize": "12px", "color": "#333", "textAlign": "right"},
                                 ),
-                                html.Button(
-                                    "Atualizar Dados",
-                                    id="btn-reload-proc",
-                                    n_clicks=0,
-                                    style=botao_style,
+                                html.Div(
+                                    style={
+                                        "display": "flex",
+                                        "flexWrap": "wrap",
+                                        "gap": "6px",
+                                        "justifyContent": "flex-end",
+                                        "alignItems": "center",
+                                    },
+                                    children=[
+                                        html.Button(
+                                            "Atualizar Dados",
+                                            id="btn-reload-proc",
+                                            n_clicks=0,
+                                            style=botao_atualizar_style,
+                                        ),
+                                        html.Button(
+                                            "Limpar Filtros",
+                                            id="btn_limpar_filtros_proc",
+                                            n_clicks=0,
+                                            style=botao_limpar_style,
+                                        ),
+                                        html.Button(
+                                            "Baixar Relatório PDF",
+                                            id="btn_download_relatorio_proc",
+                                            n_clicks=0,
+                                            style=botao_pdf_style,
+                                        ),
+                                        dcc.Download(id="download_relatorio_proc"),
+                                    ],
                                 ),
-                                html.Button(
-                                    "Limpar Filtros",
-                                    id="btn_limpar_filtros_proc",
-                                    n_clicks=0,
-                                    style=botao_style,
-                                ),
-                                html.Button(
-                                    "Baixar Relatório PDF",
-                                    id="btn_download_relatorio_proc",
-                                    n_clicks=0,
-                                    style=botao_style,
-                                ),
-                                dcc.Download(id="download_relatorio_proc"),
                             ],
                         ),
                     ],
@@ -621,15 +646,18 @@ layout = html.Div(
                         "top": 0,
                         "zIndex": 10,
                     },
-                    # Linhas alternando branco e cinza
                     style_data_conditional=[
                         {
-                            "if": {"row_index": "odd"},
-                            "backgroundColor": "#ffffff",
+                            "if": {
+                                "filter_query": '{Status} = "Em Andamento"'
+                            },
+                            "backgroundColor": "#e6e6e6",
                         },
                         {
-                            "if": {"row_index": "even"},
-                            "backgroundColor": "#f0f0f0",
+                            "if": {
+                                "filter_query": '{Status} = "Não Concluído"'
+                            },
+                            "backgroundColor": "#ffe0e0",
                         },
                     ],
                 ),
@@ -925,7 +953,7 @@ def atualizar_tabela_proc(
             title_x=0.5,
             plot_bgcolor="#FFFFFF",
             paper_bgcolor="#FFFFFF",
-            showlegend=True,
+            showlegend=False,
         )
 
         # --- gráfico anual usa filtros exceto ano ---
@@ -1054,14 +1082,7 @@ def atualizar_tabela_proc(
                 xaxis_title="Ano",
                 plot_bgcolor="#FFFFFF",
                 paper_bgcolor="#FFFFFF",
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=-0.2,
-                    x=0.5,
-                    xanchor="center",
-                    title_text="",  # remove texto da legenda
-                ),
+                showlegend=False,
             )
 
             fig_valor_mes.update_yaxes(
