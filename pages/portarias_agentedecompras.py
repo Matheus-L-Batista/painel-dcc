@@ -90,9 +90,24 @@ def carregar_dados_portarias():
         .str.startswith("http")
     ]
 
-    # Ordena pela Data (mais recente em cima)
     df["Data_dt"] = pd.to_datetime(df["Data"], dayfirst=True, errors="coerce")
-    df = df.sort_values("Data_dt", ascending=False).drop(columns=["Data_dt"])
+
+    def split_portaria(valor):
+        try:
+            num, ano = str(valor).strip().split("/")
+            return int(ano), int(num)
+        except Exception:
+            return (0, 0)
+
+    df["_portaria_ano"] = df["N°/ANO da Portaria"].apply(lambda x: split_portaria(x)[0])
+    df["_portaria_num"] = df["N°/ANO da Portaria"].apply(lambda x: split_portaria(x)[1])
+
+    # Ordenação padrão: data mais recente primeiro e, em empate, ano/número da portaria
+    df = df.sort_values(
+        by=["Data_dt", "_portaria_ano", "_portaria_num"],
+        ascending=[False, False, False],
+        na_position="last",
+    )
 
     return df
 
@@ -237,7 +252,28 @@ botao_style = {
     "cursor": "pointer",
     "fontSize": "12px",
     "fontWeight": "bold",
-    "marginRight": "6px",
+}
+
+botao_limpar_style = {
+    "backgroundColor": "#A2AAAD",
+    "color": "black",
+    "padding": "8px 16px",
+    "border": "none",
+    "borderRadius": "4px",
+    "cursor": "pointer",
+    "fontSize": "12px",
+    "fontWeight": "bold",
+}
+
+botao_pdf_style = {
+    "backgroundColor": "#DA291C",
+    "color": "white",
+    "padding": "8px 16px",
+    "border": "none",
+    "borderRadius": "4px",
+    "cursor": "pointer",
+    "fontSize": "12px",
+    "fontWeight": "bold",
 }
 
 # --------------------------------------------------
@@ -318,7 +354,7 @@ layout = html.Div(
                             "Limpar filtros",
                             id="btn_limpar_filtros_port",
                             n_clicks=0,
-                            style=botao_style,
+                            style=botao_limpar_style,
                         ),
                         html.Button(
                             "Atualizar Dados",
@@ -330,7 +366,7 @@ layout = html.Div(
                             "Baixar Relatório PDF",
                             id="btn_download_relatorio_port",
                             n_clicks=0,
-                            style=botao_style,
+                            style=botao_pdf_style,
                         ),
                         dcc.Download(id="download_relatorio_port"),
                         html.Div(
@@ -387,6 +423,9 @@ layout = html.Div(
                 {"name": "Link", "id": "Link_markdown", "presentation": "markdown"},
             ],
             data=[],
+            sort_action="custom",
+            sort_mode="single",
+            sort_by=[],
             row_selectable=False,
             cell_selectable=False,
             style_table={
@@ -415,7 +454,8 @@ layout = html.Div(
             },
             style_data={"color": "black", "backgroundColor": "white"},
             style_data_conditional=[
-                {"if": {"row_index": "odd"}, "backgroundColor": "rgb(240, 240, 240)"},
+                {"if": {"row_index": "odd"}, "backgroundColor": "#f0f0f0"},
+                {"if": {"row_index": "even"}, "backgroundColor": "white"},
             ],
             style_cell_conditional=[
                 {"if": {"column_id": "Link_markdown"}, "textAlign": "center"},
@@ -467,8 +507,9 @@ def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks):
     Input("filtro_setor_dropdown", "value"),
     Input("filtro_servidor_dropdown", "value"),
     Input("filtro_tipo", "value"),
+    Input("tabela_portarias", "sort_by"),
 )
-def atualizar_tabela_portarias(_reload, numero_ano_texto, setor_drop, servidor_drop, tipo_sel):
+def atualizar_tabela_portarias(_reload, numero_ano_texto, setor_drop, servidor_drop, tipo_sel, sort_by):
     dff_base, _ = get_df_portarias(force=False)
     dff = dff_base.copy() if dff_base is not None else pd.DataFrame()
 
@@ -518,6 +559,35 @@ def atualizar_tabela_portarias(_reload, numero_ano_texto, setor_drop, servidor_d
         return ""
 
     dff_display["Link_markdown"] = dff_display[NOME_COL_LINK_ORIGINAL].apply(formatar_link)
+
+    if sort_by:
+        col = sort_by[0]["column_id"]
+        ascending = sort_by[0]["direction"] == "asc"
+
+        if col == "Data":
+            dff_display = dff_display.sort_values(
+                by="Data_dt",
+                ascending=ascending,
+                na_position="last",
+            )
+        elif col == "N°/ANO da Portaria":
+            dff_display = dff_display.sort_values(
+                by=["_portaria_ano", "_portaria_num"],
+                ascending=[ascending, ascending],
+                na_position="last",
+            )
+        else:
+            dff_display = dff_display.sort_values(
+                by=col,
+                ascending=ascending,
+                na_position="last",
+            )
+    else:
+        dff_display = dff_display.sort_values(
+            by=["Data_dt", "_portaria_ano", "_portaria_num"],
+            ascending=[False, False, False],
+            na_position="last",
+        )
 
     cols_tabela = ["Data", "N°/ANO da Portaria", "Setor de Origem", "Servidores", "TIPO", "Link_markdown"]
 

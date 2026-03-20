@@ -48,8 +48,7 @@ dropdown_style = {
     "zIndex": 1000,
 }
 
-button_style = {
-    "backgroundColor": "#0b2b57",
+button_base_style = {
     "color": "white",
     "padding": "8px 16px",
     "border": "none",
@@ -58,6 +57,10 @@ button_style = {
     "fontSize": "14px",
     "fontWeight": "bold",
 }
+
+button_limpar_style = {**button_base_style, "backgroundColor": "#9aa0a6", "color": "#111111"}
+button_atualizar_style = {**button_base_style, "backgroundColor": "#0b2b57"}
+button_pdf_style = {**button_base_style, "backgroundColor": "#d93025"}
 
 
 def conv_moeda_br(v):
@@ -375,6 +378,17 @@ def _opcoes_unicas(df: pd.DataFrame, col: str):
     return [{"label": str(v), "value": str(v)} for v in vals]
 
 
+def _aplicar_filtro_saldo(df_plan: pd.DataFrame, filtro_saldo: str):
+    if df_plan is None or df_plan.empty:
+        return df_plan
+    filtro = str(filtro_saldo or "").strip().lower()
+    if filtro == "positivo":
+        return df_plan[df_plan["Saldo"].fillna(0) > 0]
+    if filtro == "negativo":
+        return df_plan[df_plan["Saldo"].fillna(0) < 0]
+    return df_plan
+
+
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
@@ -442,6 +456,23 @@ layout = html.Div(
                             ],
                         ),
                         html.Div(
+                            style={"minWidth": "180px", "flex": "0 0 190px"},
+                            children=[
+                                html.Label("Saldo do item"),
+                                dcc.Dropdown(
+                                    id="filtro_saldo_pca",
+                                    options=[
+                                        {"label": "Todos", "value": "todos"},
+                                        {"label": "Saldo positivo", "value": "positivo"},
+                                        {"label": "Saldo negativo", "value": "negativo"},
+                                    ],
+                                    value="todos",
+                                    clearable=False,
+                                    style=dropdown_style,
+                                ),
+                            ],
+                        ),
+                        html.Div(
                             style={"minWidth": "220px", "flex": "1 1 260px"},
                             children=[
                                 html.Label("Nome Classe/Grupo (digitação)"),
@@ -491,19 +522,19 @@ layout = html.Div(
                                     "Limpar filtros",
                                     id="btn_limpar_filtros_pca",
                                     n_clicks=0,
-                                    style={**button_style, "marginRight": "10px"},
+                                    style={**button_limpar_style, "marginRight": "10px"},
                                 ),
                                 html.Button(
                                     "Atualizar Dados",
                                     id="btn_reload_pca",
                                     n_clicks=0,
-                                    style={**button_style, "marginRight": "10px"},
+                                    style={**button_atualizar_style, "marginRight": "10px"},
                                 ),
                                 html.Button(
                                     "Baixar Relatório PDF",
                                     id="btn_download_relatorio_pca",
                                     n_clicks=0,
-                                    style=button_style,
+                                    style=button_pdf_style,
                                 ),
                                 dcc.Download(id="download_relatorio_pca"),
                                 html.Div(
@@ -526,7 +557,6 @@ layout = html.Div(
                                     style={
                                         "minWidth": "180px",
                                         "padding": "10px 15px",
-                                        "backgroundColor": "#f5f5f5",
                                         "textAlign": "center",
                                     },
                                 ),
@@ -535,7 +565,6 @@ layout = html.Div(
                                     style={
                                         "minWidth": "180px",
                                         "padding": "10px 15px",
-                                        "backgroundColor": "#f5f5f5",
                                         "textAlign": "center",
                                     },
                                 ),
@@ -544,7 +573,6 @@ layout = html.Div(
                                     style={
                                         "minWidth": "180px",
                                         "padding": "10px 15px",
-                                        "backgroundColor": "#f5f5f5",
                                         "textAlign": "center",
                                     },
                                 ),
@@ -592,6 +620,7 @@ layout = html.Div(
                             ],
                             hidden_columns=["Saldo_num", "Planejado_num"],
                             data=[],
+                            css=[{"selector": ".show-hide", "rule": "display: none !important;"}],
                             page_action="none",
                             fixed_rows={"headers": True},
                             virtualization=True,
@@ -603,6 +632,7 @@ layout = html.Div(
                                 "overflowY": "auto",
                                 "maxHeight": "420px",
                                 "width": "100%",
+                                "tableLayout": "fixed",
                                 "position": "relative",
                                 "zIndex": 1,
                             },
@@ -613,16 +643,16 @@ layout = html.Div(
                                 "whiteSpace": "normal",
                             },
                             style_cell_conditional=[
-                                {"if": {"column_id": "DFD"}, "minWidth": 70, "maxWidth": 80},
-                                {"if": {"column_id": "Área requisitante"}, "minWidth": 110, "maxWidth": 130},
-                                {"if": {"column_id": "Material ou Serviço"}, "minWidth": 110, "maxWidth": 130},
-                                {"if": {"column_id": "Item"}, "minWidth": 50, "maxWidth": 60},
-                                {"if": {"column_id": "Nome Classe/Grupo"}, "minWidth": 240, "maxWidth": 280},
-                                {"if": {"column_id": "Código PDM material"}, "minWidth": 90, "maxWidth": 100},
-                                {"if": {"column_id": "Nome do PDM material"}, "minWidth": 180, "maxWidth": 220},
-                                {"if": {"column_id": "Planejado_fmt"}, "minWidth": 110, "maxWidth": 130},
-                                {"if": {"column_id": "Executado_fmt"}, "minWidth": 110, "maxWidth": 130},
-                                {"if": {"column_id": "Saldo_fmt"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "DFD"}, "width": "80px", "minWidth": "80px", "maxWidth": "80px"},
+                                {"if": {"column_id": "Área requisitante"}, "width": "130px", "minWidth": "130px", "maxWidth": "130px"},
+                                {"if": {"column_id": "Material ou Serviço"}, "width": "130px", "minWidth": "130px", "maxWidth": "130px"},
+                                {"if": {"column_id": "Item"}, "width": "60px", "minWidth": "60px", "maxWidth": "60px"},
+                                {"if": {"column_id": "Nome Classe/Grupo"}, "width": "320px", "minWidth": "320px", "maxWidth": "320px"},
+                                {"if": {"column_id": "Código PDM material"}, "width": "115px", "minWidth": "115px", "maxWidth": "115px"},
+                                {"if": {"column_id": "Nome do PDM material"}, "width": "235px", "minWidth": "235px", "maxWidth": "235px"},
+                                {"if": {"column_id": "Planejado_fmt"}, "width": "130px", "minWidth": "130px", "maxWidth": "130px"},
+                                {"if": {"column_id": "Executado_fmt"}, "width": "130px", "minWidth": "130px", "maxWidth": "130px"},
+                                {"if": {"column_id": "Saldo_fmt"}, "width": "130px", "minWidth": "130px", "maxWidth": "130px"},
                             ],
                             style_header={
                                 "fontWeight": "bold",
@@ -636,6 +666,48 @@ layout = html.Div(
                                     "backgroundColor": "#ccffcc",
                                 },
                             ],
+                        ),
+                    ],
+                ),
+                html.Div(
+                    style={
+                        "width": "100%",
+                        "border": "1px solid #9e9e9e",
+                        "padding": "10px 12px",
+                        "backgroundColor": "white",
+                        "fontSize": "12px",
+                        "lineHeight": "1.35",
+                        "color": "#333333",
+                    },
+                    children=[
+                        html.Div(
+                            [
+                                "Os processos listados abaixo podem ser consultados na área pública do SIPAC. Link de acesso: ",
+                                html.A(
+                                    "https://sipac.unifei.edu.br/public/jsp/portal.jsf",
+                                    href="https://sipac.unifei.edu.br/public/jsp/portal.jsf",
+                                    target="_blank",
+                                    style={"fontWeight": "bold"},
+                                ),
+                                html.Br(),
+                                "Clicar em CONSULTAS >> PROCESSOS. Em seguida, informar o número do processo desejado, obedecendo à máscara da tela. Exemplo para o processo 23088.099999.2023-90:",
+                            ]
+                        ),
+                        html.Div(
+                            style={"display": "flex", "justifyContent": "center", "gap": "6px", "margin": "10px 0"},
+                            children=[
+                                html.Div("23088", style={"border": "1px solid #777", "padding": "4px 6px", "fontWeight": "bold", "backgroundColor": "#f4f4f4"}),
+                                html.Div("099999", style={"border": "1px solid #777", "padding": "4px 6px", "fontWeight": "bold", "backgroundColor": "#f4f4f4"}),
+                                html.Div("2023", style={"border": "1px solid #777", "padding": "4px 6px", "fontWeight": "bold", "backgroundColor": "#f4f4f4"}),
+                                html.Div("90", style={"border": "1px solid #777", "padding": "4px 6px", "fontWeight": "bold", "backgroundColor": "#f4f4f4"}),
+                            ],
+                        ),
+                        html.Div(
+                            [
+                                "Em seguida, clicar na lupa à direita ",
+                                html.Span("🔍", style={"fontSize": "16px"}),
+                                " para ter acesso ao conteúdo do processo que esteja classificado como OSTENSIVO.",
+                            ]
                         ),
                     ],
                 ),
@@ -662,6 +734,7 @@ layout = html.Div(
                                 {"name": "Valor", "id": "Valor_fmt"},
                             ],
                             data=[],
+                            css=[{"selector": ".show-hide", "rule": "display: none !important;"}],
                             page_action="none",
                             fixed_rows={"headers": True},
                             virtualization=True,
@@ -673,6 +746,7 @@ layout = html.Div(
                                 "overflowY": "auto",
                                 "maxHeight": "420px",
                                 "width": "100%",
+                                "tableLayout": "fixed",
                                 "position": "relative",
                                 "zIndex": 1,
                             },
@@ -683,14 +757,14 @@ layout = html.Div(
                                 "whiteSpace": "normal",
                             },
                             style_cell_conditional=[
-                                {"if": {"column_id": "DFD"}, "minWidth": 80, "maxWidth": 90},
-                                {"if": {"column_id": "Área requisitante"}, "minWidth": 110, "maxWidth": 130},
-                                {"if": {"column_id": "Material ou Serviço"}, "minWidth": 110, "maxWidth": 130},
-                                {"if": {"column_id": "Item"}, "minWidth": 50, "maxWidth": 60},
-                                {"if": {"column_id": "Processo"}, "minWidth": 180, "maxWidth": 220},
-                                {"if": {"column_id": "Objeto"}, "minWidth": 260, "maxWidth": 320, "textAlign": "left"},
-                                {"if": {"column_id": "Observações"}, "minWidth": 220, "maxWidth": 280, "textAlign": "left"},
-                                {"if": {"column_id": "Valor_fmt"}, "minWidth": 110, "maxWidth": 130},
+                                {"if": {"column_id": "DFD"}, "width": "90px", "minWidth": "90px", "maxWidth": "90px"},
+                                {"if": {"column_id": "Área requisitante"}, "width": "155px", "minWidth": "155px", "maxWidth": "155px"},
+                                {"if": {"column_id": "Material ou Serviço"}, "width": "155px", "minWidth": "155px", "maxWidth": "155px"},
+                                {"if": {"column_id": "Item"}, "width": "70px", "minWidth": "70px", "maxWidth": "70px"},
+                                {"if": {"column_id": "Processo"}, "width": "205px", "minWidth": "205px", "maxWidth": "205px"},
+                                {"if": {"column_id": "Objeto"}, "width": "365px", "minWidth": "365px", "maxWidth": "365px", "textAlign": "left"},
+                                {"if": {"column_id": "Observações"}, "width": "310px", "minWidth": "310px", "maxWidth": "310px", "textAlign": "left"},
+                                {"if": {"column_id": "Valor_fmt"}, "width": "135px", "minWidth": "135px", "maxWidth": "135px"},
                             ],
                             style_header={
                                 "fontWeight": "bold",
@@ -771,8 +845,9 @@ def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks):
     Input("filtro_dfd_texto_pca", "value"),
     Input("filtro_area_pca", "value"),
     Input("filtro_tipo_pca", "value"),
+    Input("filtro_saldo_pca", "value"),
 )
-def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo):
+def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo, filtro_saldo):
     cache, _ = get_pca_cache(force=False)
     if not cache:
         return [], [], [], html.Div(), html.Div(), html.Div()
@@ -830,6 +905,21 @@ def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo):
     if tipo:
         dff_plan = dff_plan[dff_plan["Material ou Serviço"] == tipo]
         dff_proc = dff_proc[dff_proc["Material ou Serviço"] == tipo]
+
+    dff_plan = _aplicar_filtro_saldo(dff_plan, filtro_saldo)
+    if filtro_saldo in {"positivo", "negativo"}:
+        chaves = set(
+            zip(
+                dff_plan["DFD"].astype(str),
+                dff_plan["Item"].astype(str),
+            )
+        )
+        if chaves:
+            dff_proc = dff_proc[
+                dff_proc.apply(lambda r: (str(r.get("DFD", "")), str(r.get("Item", ""))) in chaves, axis=1)
+            ]
+        else:
+            dff_proc = dff_proc.iloc[0:0]
 
     # remove linhas sem processo
     dff_proc = dff_proc[
@@ -945,11 +1035,12 @@ def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo):
     Output("filtro_dfd_texto_pca", "value"),
     Output("filtro_area_pca", "value"),
     Output("filtro_tipo_pca", "value"),
+    Output("filtro_saldo_pca", "value"),
     Input("btn_limpar_filtros_pca", "n_clicks"),
     prevent_initial_call=True,
 )
 def limpar_filtros_pca(_n):
-    return "2026", None, None, None, None
+    return "2026", None, None, None, None, "todos"
 
 
 # --------------------------------------------------
