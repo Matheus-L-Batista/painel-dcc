@@ -38,10 +38,11 @@ URL_BI_EXTRATO = (
 # Atualização automática (cache + refresh manual/automático)
 # ==========================================================
 import time
-import tempfile
 import json
 
-CACHE_DIR = os.path.join(tempfile.gettempdir(), "painel_dcf_cache")
+from utils.runtime import get_cache_dir
+
+CACHE_DIR = str(get_cache_dir("extrato_contrato"))
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 CACHE_TTL_SECONDS = 60 * 60  # 1 hora

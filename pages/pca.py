@@ -25,6 +25,11 @@ import threading
 import pickle
 import re
 
+from utils.runtime import format_datetime_sp, get_cache_dir, get_default_year, now_sp
+
+
+ANO_PADRAO_PCA = str(get_default_year())
+
 
 dash.register_page(
     __name__,
@@ -252,8 +257,7 @@ _CACHE = None          # dict: {"base": df, "plan": df, "proc": df}
 _CACHE_AT = None
 
 _CACHE_DIR = os.path.join(
-    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
-    ".cache_pca",
+    str(get_cache_dir("pca")),
 )
 os.makedirs(_CACHE_DIR, exist_ok=True)
 _CACHE_FILE = os.path.join(_CACHE_DIR, "pca_cache.pkl")
@@ -261,16 +265,11 @@ _CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
 
 
 def _now_sp():
-    return datetime.now(timezone("America/Sao_Paulo"))
+    return now_sp()
 
 
 def _fmt_dt(dt):
-    if not dt:
-        return "-"
-    try:
-        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
-    except Exception:
-        return dt.strftime("%d/%m/%Y %H:%M:%S")
+    return format_datetime_sp(dt)
 
 
 def _load_disk_cache(allow_stale: bool = False):
@@ -419,8 +418,8 @@ layout = html.Div(
                                 html.Label("Ano"),
                                 dcc.Dropdown(
                                     id="filtro_ano_pca",
-                                    options=[{"label": "2026", "value": "2026"}],
-                                    value="2026",
+                                    options=[{"label": ANO_PADRAO_PCA, "value": ANO_PADRAO_PCA}],
+                                    value=ANO_PADRAO_PCA,
                                     placeholder=None,
                                     clearable=False,
                                     style=dropdown_style,
@@ -816,17 +815,17 @@ def carregar_ao_abrir_interval_ou_recarregar(pathname, _n_intervals, n_clicks):
             continue
         anos_norm.append(ano_int)
     anos_norm = sorted(set(anos_norm))
-    if 2026 not in anos_norm:
-        anos_norm = [2026] + anos_norm
+    if get_default_year() not in anos_norm:
+        anos_norm = [get_default_year()] + anos_norm
     anos = [{"label": str(a), "value": str(a)} for a in anos_norm]
     if not anos:
-        anos = [{"label": "2026", "value": "2026"}]
+        anos = [{"label": ANO_PADRAO_PCA, "value": ANO_PADRAO_PCA}]
 
     tipos = _opcoes_unicas(df_base, "Material ou Serviço")
     areas = _opcoes_unicas(df_base, "Área requisitante")
 
     msg = html.Div([html.B("Dados disponíveis. "), html.Span(status)])
-    return {"ts": datetime.now().isoformat()}, msg, anos, tipos, areas
+    return {"ts": now_sp().isoformat()}, msg, anos, tipos, areas
 
 
 # --------------------------------------------------
@@ -859,10 +858,10 @@ def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo, fil
     dff_plan = dff_plan[dff_plan["DFD"] != "*"]
     dff_proc = dff_proc[dff_proc["DFD"] != "*"]
 
-    # Se o dropdown vier vazio na carga inicial, assume 2026 (comportamento esperado).
+    # Se o dropdown vier vazio na carga inicial, assume o ano padrão configurado.
     ano = str(ano).strip() if ano is not None else ""
     if not ano:
-        ano = "2026"
+        ano = ANO_PADRAO_PCA
 
     dff_plan = dff_plan[dff_plan["Ano"] == str(ano)]
     dff_proc = dff_proc[dff_proc["Ano"] == str(ano)]
@@ -1040,7 +1039,7 @@ def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo, fil
     prevent_initial_call=True,
 )
 def limpar_filtros_pca(_n):
-    return "2026", None, None, None, None, "todos"
+    return ANO_PADRAO_PCA, None, None, None, None, "todos"
 
 
 # --------------------------------------------------
@@ -1078,9 +1077,10 @@ def simple_pdf(text):
     Input("btn_download_relatorio_pca", "n_clicks"),
     State("store_dados_pca_processos", "data"),
     State("tabela_pca_planejamento", "data"),
+    State("filtro_ano_pca", "value"),
     prevent_initial_call=True,
 )
-def gerar_pdf_pca(n, dados_processos, dados_planejamento):
+def gerar_pdf_pca(n, dados_processos, dados_planejamento, ano_selecionado):
     if not n or (not dados_processos and not dados_planejamento):
         return None
 

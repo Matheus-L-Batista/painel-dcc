@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Cache local do app
+.cache_*/
+
+# Cache consolidado configurado pelos utilitários
+painel_dcc_cache/
+
+# Arquivos de sistema/editor
+.DS_Store
+Thumbs.db

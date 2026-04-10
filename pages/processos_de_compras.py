@@ -2,28 +2,17 @@ import dash
 from dash import html, dcc, Input, Output, State, dash_table
 from dash.exceptions import PreventUpdate
 import pandas as pd
-from io import BytesIO
-from reportlab.lib.pagesizes import landscape, A4
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    Image,
-)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-from reportlab.lib import colors
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime
-from pytz import timezone
-import os
-import time
-from pathlib import Path
+
+from pdf.processos_pdf import gerar_pdf_processos
+from services.processos_service import (
+    MESES_ORDENADOS,
+    formatar_moeda_brl,
+    get_df_processos,
+)
+from utils.runtime import format_datetime_sp, get_default_year, now_sp
 
 # --------------------------------------------------
 # Função para verificar se estamos na página de processos de compras
@@ -64,171 +53,10 @@ dash.register_page(
     title="Processos de Compras",
 )
 
-# URL da planilha de Processos de Compras (BI Itajubá)
-URL_PROCESSOS = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog/"
-    "gviz/tq?tqx=out:csv&sheet=BI%20-%20Itajub%C3%A1"
-)
-# --------------------------------------------------
-# Atualização / cache (mesma ideia do painel de execução)
-# --------------------------------------------------
-CACHE_DIR = Path(os.environ.get("PAINEL_DCF_CACHE_DIR", "/tmp/painel-dcf-cache"))
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-CACHE_FILE = CACHE_DIR / "processos_de_compras.parquet"
-
-# cache em disco: 1h (ajuste se quiser)
-CACHE_TTL_SECONDS = int(os.environ.get("PROCESSOS_CACHE_TTL_SECONDS", "3600"))
-
-# cache em memória (pra não ficar lendo do disco a cada callback)
-_DF_MEM = None
-_DF_MEM_TS = 0.0
-
-def _cache_is_fresh(path: Path, ttl_seconds: int) -> bool:
-    try:
-        if not path.exists():
-            return False
-        age = time.time() - path.stat().st_mtime
-        return age < ttl_seconds
-    except Exception:
-        return False
-
-def get_df(force: bool = False):
-    """
-    Retorna (df, status_str).
-
-    - Sem force: usa cache (memória -> disco -> download).
-    - Com force: baixa novamente e atualiza cache.
-    """
-    global _DF_MEM, _DF_MEM_TS
-
-    now = time.time()
-
-    # 1) memória
-    if (not force) and (_DF_MEM is not None) and ((now - _DF_MEM_TS) < CACHE_TTL_SECONDS):
-        return _DF_MEM.copy(), f"cache em memória ({int(now - _DF_MEM_TS)}s)"
-
-    # 2) disco
-    if (not force) and _cache_is_fresh(CACHE_FILE, CACHE_TTL_SECONDS):
-        try:
-            df_disk = pd.read_parquet(CACHE_FILE)
-            _DF_MEM = df_disk
-            _DF_MEM_TS = now
-            age = int(now - CACHE_FILE.stat().st_mtime)
-            return df_disk.copy(), f"cache em disco ({age}s)"
-        except Exception:
-            # se o parquet falhar, ignora e baixa de novo
-            pass
-
-    # 3) download
-    df_new = carregar_dados_processos()
-    try:
-        df_new.to_parquet(CACHE_FILE, index=False)
-    except Exception:
-        # parquet depende de pyarrow/fastparquet; se não tiver, o app continua sem persistência
-        pass
-
-    _DF_MEM = df_new
-    _DF_MEM_TS = now
-    return df_new.copy(), "atualizado da planilha"
-
-
-# --------------------------------------------------
-# Carga de dados e utilitários
-# --------------------------------------------------
-def carregar_dados_processos():
-    """
-    Lê a planilha de processos de compras e faz:
-    - garantia de existência de colunas esperadas
-    - conversão de campos monetários para float
-    - conversão de datas e criação da coluna de mês de finalização (texto)
-    """
-    df = pd.read_csv(URL_PROCESSOS)
-    df.columns = [c.strip() for c in df.columns]
-
-    col_solicitante = "Solicitante"
-    col_num_proc = "Numero do Processo"
-    col_preco_estimado = "PREÇO ESTIMADO"
-    col_valor_contratado = "Valor Contratado"
-    col_objeto = "Objeto"
-    col_modalidade = "Modalidade"
-    col_ano = "Ano"
-    col_status = "Status"
-    col_classif_nc = "Classificação dos processos não concluídos"
-    col_numero = "Número"
-    col_data_entrada = "Data de Entrada"
-    col_data_finalizacao = "Data finalização"
-    col_contr_reinstr_com = (
-        "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº (com pontos e traços)"
-    )
-
-    # Garante todas as colunas presentes, mesmo se a planilha mudar
-    for c in [
-        col_solicitante,
-        col_num_proc,
-        col_preco_estimado,
-        col_valor_contratado,
-        col_objeto,
-        col_modalidade,
-        col_ano,
-        col_status,
-        col_classif_nc,
-        col_numero,
-        col_data_entrada,
-        col_data_finalizacao,
-        col_contr_reinstr_com,
-    ]:
-        if c not in df.columns:
-            df[c] = ""
-
-    def conv_moeda(v):
-        """
-        Converte string no formato brasileiro de moeda
-        (R$, pontos de milhar, vírgula decimal) em float.
-        """
-        if isinstance(v, str):
-            v = (
-                v.replace("R$", "")
-                .replace(".", "")
-                .replace(",", ".")
-                .strip()
-            )
-            return float(v) if v not in ["", "-"] else 0.0
-        return float(v) if pd.notna(v) else 0.0
-
-    df[col_preco_estimado] = df[col_preco_estimado].apply(conv_moeda)
-    df[col_valor_contratado] = df[col_valor_contratado].apply(conv_moeda)
-
-    # Converte a data de finalização para datetime
-    df["Data finalização"] = pd.to_datetime(
-        df["Data finalização"], format="%d/%m/%Y", errors="coerce"
-    )
-
-    # Mapeamento numérico -> mês por extenso (minúsculo)
-    meses_map = {
-        1: "janeiro",
-        2: "fevereiro",
-        3: "março",
-        4: "abril",
-        5: "maio",
-        6: "junho",
-        7: "julho",
-        8: "agosto",
-        9: "setembro",
-        10: "outubro",
-        11: "novembro",
-        12: "dezembro",
-    }
-
-    df["Mes_finalizacao"] = df["Data finalização"].dt.month.map(meses_map)
-
-    return df
-
-
 # df_proc_base é carregado via get_df() (cache)
 
-# Força ano padrão 2026
-ANO_PADRAO = 2026
+ANO_PADRAO = get_default_year()
+get_df = get_df_processos
 
 dropdown_style = {
     "color": "black",
@@ -271,29 +99,51 @@ def formatar_moeda(v):
     """
     Formata float em moeda brasileira com prefixo R$.
     """
-    return (
-        f"R$ {v:,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
+    return formatar_moeda_brl(v)
 
 
-# Lista fixa de meses em ordem cronológica
-MESES_ORDENADOS = [
-    "janeiro",
-    "fevereiro",
-    "março",
-    "abril",
-    "maio",
-    "junho",
-    "julho",
-    "agosto",
-    "setembro",
-    "outubro",
-    "novembro",
-    "dezembro",
-]
+def aplicar_filtros_processos(
+    df,
+    num_proc=None,
+    ano=None,
+    mes_finalizacao=None,
+    solicitante=None,
+    objeto=None,
+    modalidade=None,
+    status=None,
+    classif_nc=None,
+    num_proc_parcial=True,
+):
+    dff = df.copy()
+    mask = pd.Series(True, index=dff.index)
+
+    if num_proc and str(num_proc).strip():
+        termo = str(num_proc).strip()
+        if num_proc_parcial:
+            mask &= (
+                dff["Numero do Processo"]
+                .astype(str)
+                .str.contains(termo, case=False, na=False)
+            )
+        else:
+            mask &= dff["Numero do Processo"] == num_proc
+    if ano:
+        mask &= dff["Ano"] == ano
+    if mes_finalizacao:
+        mask &= dff["Mes_finalizacao"] == mes_finalizacao
+    if solicitante:
+        mask &= dff["Solicitante"] == solicitante
+    if objeto:
+        mask &= dff["Objeto"] == objeto
+    if modalidade:
+        mask &= dff["Modalidade"] == modalidade
+    if status:
+        mask &= dff["Status"] == status
+    if classif_nc:
+        mask &= dff["Classificação dos processos não concluídos"] == classif_nc
+
+    return dff[mask]
+
 
 # --------------------------------------------------
 # Layout
@@ -683,8 +533,7 @@ def carregar_ao_abrir_ou_recarregar(pathname, n_reload, n_intervals):
     if pathname != "/processos-de-compras":
         raise PreventUpdate
 
-    # botão manual sempre força
-    force = bool(n_reload) and n_reload > 0
+    force = dash.ctx.triggered_id == "btn-reload-proc"
 
     try:
         df, status = get_df(force=force)
@@ -695,20 +544,18 @@ def carregar_ao_abrir_ou_recarregar(pathname, n_reload, n_intervals):
             anos = [ANO_PADRAO]
         ano_opts = [{"label": str(a), "value": a} for a in anos]
 
-        tz = timezone("America/Sao_Paulo")
-        agora = datetime.now(tz).strftime("%d/%m/%Y %H:%M:%S")
         msg = html.Div(
             [
                 html.B("Dados prontos. "),
-                html.Span(f"({agora}) "),
+                html.Span(f"({format_datetime_sp(now_sp())}) "),
                 html.Span(status),
             ]
         )
 
-        return {"ts": datetime.now(tz).isoformat()}, msg, ano_opts
+        return {"ts": now_sp().isoformat()}, msg, ano_opts
     except Exception as e:
         msg = html.Div([html.B("Falha ao carregar dados: "), html.Span(str(e))])
-        return {"ts": datetime.now().isoformat(), "erro": str(e)}, msg, [{"label": str(ANO_PADRAO), "value": ANO_PADRAO}]
+        return {"ts": now_sp().isoformat(), "erro": str(e)}, msg, [{"label": str(ANO_PADRAO), "value": ANO_PADRAO}]
 
 # ----------------------------------------
 # Callback: atualizar tabela + cards + gráficos
@@ -748,37 +595,17 @@ def atualizar_tabela_proc(
     # Filtro principal
     # -------------------------
     df_base, _status = get_df(force=False)
-    dff = df_base.copy()
-    mask = pd.Series(True, index=dff.index)
-
-    # Filtro por número de processo (texto parcial)
-    if num_proc and str(num_proc).strip():
-        termo = str(num_proc).strip()
-        mask &= (
-            dff["Numero do Processo"]
-            .astype(str)
-            .str.contains(termo, case=False, na=False)
-        )
-
-    # Ano (sempre aplicado se não nulo)
-    if ano:
-        mask &= dff["Ano"] == ano
-    if mes_finalizacao:
-        mask &= dff["Mes_finalizacao"] == mes_finalizacao
-    if solicitante:
-        mask &= dff["Solicitante"] == solicitante
-    if objeto:
-        mask &= dff["Objeto"] == objeto
-    if modalidade:
-        mask &= dff["Modalidade"] == modalidade
-    if status:
-        mask &= dff["Status"] == status
-    if classif_nc:
-        mask &= (
-            dff["Classificação dos processos não concluídos"] == classif_nc
-        )
-
-    dff = dff[mask]
+    dff = aplicar_filtros_processos(
+        df_base,
+        num_proc=num_proc,
+        ano=ano,
+        mes_finalizacao=mes_finalizacao,
+        solicitante=solicitante,
+        objeto=objeto,
+        modalidade=modalidade,
+        status=status,
+        classif_nc=classif_nc,
+    )
 
     # -------------------------
     # Formatação da tabela
@@ -958,35 +785,16 @@ def atualizar_tabela_proc(
 
         # --- gráfico anual usa filtros exceto ano ---
         df_base2, _status2 = get_df(force=False)
-        dff_global = df_base2.copy()
-        mask_global = pd.Series(True, index=dff_global.index)
-
-        if num_proc and str(num_proc).strip():
-            termo = str(num_proc).strip()
-            mask_global &= (
-                dff_global["Numero do Processo"]
-                .astype(str)
-                .str.contains(termo, case=False, na=False)
-            )
-        if mes_finalizacao:
-            mask_global &= (
-                dff_global["Mes_finalizacao"] == mes_finalizacao
-            )
-        if solicitante:
-            mask_global &= dff_global["Solicitante"] == solicitante
-        if objeto:
-            mask_global &= dff_global["Objeto"] == objeto
-        if modalidade:
-            mask_global &= dff_global["Modalidade"] == modalidade
-        if status:
-            mask_global &= dff_global["Status"] == status
-        if classif_nc:
-            mask_global &= (
-                dff_global["Classificação dos processos não concluídos"]
-                == classif_nc
-            )
-
-        dff_global = dff_global[mask_global]
+        dff_global = aplicar_filtros_processos(
+            df_base2,
+            num_proc=num_proc,
+            mes_finalizacao=mes_finalizacao,
+            solicitante=solicitante,
+            objeto=objeto,
+            modalidade=modalidade,
+            status=status,
+            classif_nc=classif_nc,
+        )
         dff_conc_global = dff_global[
             dff_global["Status"] == "Concluído"
         ].copy()
@@ -1156,30 +964,18 @@ def atualizar_opcoes_filtros(
         raise PreventUpdate
     
     df_base, _status = get_df(force=False)
-    dff = df_base.copy()
-    mask = pd.Series(True, index=dff.index)
-
-    # Aplica todos os filtros
-    if ano:
-        mask &= dff["Ano"] == ano
-    if mes_finalizacao:
-        mask &= dff["Mes_finalizacao"] == mes_finalizacao
-    if solicitante:
-        mask &= dff["Solicitante"] == solicitante
-    if objeto:
-        mask &= dff["Objeto"] == objeto
-    if modalidade:
-        mask &= dff["Modalidade"] == modalidade
-    if status:
-        mask &= dff["Status"] == status
-    if classif_nc:
-        mask &= (
-            dff["Classificação dos processos não concluídos"] == classif_nc
-        )
-    if num_proc:
-        mask &= dff["Numero do Processo"] == num_proc
-
-    dff = dff[mask]
+    dff = aplicar_filtros_processos(
+        df_base,
+        num_proc=num_proc,
+        ano=ano,
+        mes_finalizacao=mes_finalizacao,
+        solicitante=solicitante,
+        objeto=objeto,
+        modalidade=modalidade,
+        status=status,
+        classif_nc=classif_nc,
+        num_proc_parcial=False,
+    )
 
     # Opções para Número do Processo
     op_num_proc = [
@@ -1270,366 +1066,6 @@ def limpar_filtros_proc(n):
     
     return None, ANO_PADRAO, None, None, None, None, None, None
 
-# ====================================================
-# FUNÇÕES AUXILIARES PARA PDF – COMPRAS
-# ====================================================
-def formatar_moeda(valor):
-    """
-    Formata um valor numérico como moeda brasileira (R$ X.XXX,XX).
-    """
-    try:
-        valor_float = float(valor) if isinstance(valor, str) else valor
-        return (
-            f"R$ {valor_float:,.2f}"
-            .replace(",", "X")
-            .replace(".", ",")
-            .replace("X", ".")
-        )
-    except (ValueError, TypeError):
-        return str(valor)
-
-
-def criar_card_elemento(titulo, valor, cor):
-    """
-    Cria um elemento de card para PDF.
-    """
-    card_content = [
-        [
-            Paragraph(
-                f"{valor}",
-                ParagraphStyle(
-                    "card_valor",
-                    alignment=TA_CENTER,
-                    spaceAfter=4,
-                ),
-            )
-        ],
-        [
-            Paragraph(
-                f"{titulo}",
-                ParagraphStyle(
-                    "card_titulo",
-                    alignment=TA_CENTER,
-                    textColor="#666666",
-                    spaceAfter=0,
-                ),
-            )
-        ],
-    ]
-
-    card_table = Table(card_content, colWidths=[1.5 * inch])
-    card_table.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    colors.HexColor("#FFFFFF"),
-                ),
-                (
-                    "BORDER",
-                    (0, 0),
-                    (-1, -1),
-                    1,
-                    colors.HexColor("#DDDDDD"),
-                ),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ]
-        )
-    )
-    return card_table
-
-
-def criar_cards_resumo_pdf(story, df, pagesize):
-    """
-    Cria cards de resumo no PDF com os mesmos dados dos cards HTML.
-    """
-    df_num = df.copy()
-    df_num["Valor Contratado"] = pd.to_numeric(
-        df_num["Valor Contratado"], errors="coerce"
-    ).fillna(0)
-
-    total_valor_contratado = df_num["Valor Contratado"].sum()
-    qtd_processos = len(df_num)
-    media_por_processo = (
-        total_valor_contratado / qtd_processos if qtd_processos > 0 else 0.0
-    )
-
-    concluidos = (df_num["Status"] == "Concluído").sum()
-    em_andamento = (df_num["Status"] == "Em Andamento").sum()
-    nao_concluidos = (df_num["Status"] == "Não Concluído").sum()
-
-    story.append(Spacer(1, 0.08 * inch))
-
-    card_data = [
-        [
-            criar_card_elemento(
-                "Valor Contratado",
-                formatar_moeda(total_valor_contratado),
-                "#c00000",
-            ),
-            criar_card_elemento(
-                "Média por Processo",
-                formatar_moeda(media_por_processo),
-                "#003A70",
-            ),
-            criar_card_elemento(
-                "Número de Processos",
-                str(qtd_processos),
-                "#333333",
-            ),
-            criar_card_elemento(
-                "Processos Concluídos",
-                str(concluidos),
-                "#003A70",
-            ),
-            criar_card_elemento(
-                "Processos Em Andamento",
-                str(em_andamento),
-                "#F4A000",
-            ),
-            criar_card_elemento(
-                "Processos Não Concluídos",
-                str(nao_concluidos),
-                "#DA291C",
-            ),
-        ]
-    ]
-
-    card_width = (pagesize[0] - 0.3 * inch) / 6 - 0.05 * inch
-    cards_table = Table(
-        card_data,
-        colWidths=[
-            card_width,
-            card_width,
-            card_width,
-            card_width,
-            card_width,
-            card_width,
-        ],
-    )
-
-    cards_table.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("GRID", (0, 0), (-1, -1), 0, colors.transparent),
-            ]
-        )
-    )
-
-    story.append(cards_table)
-    story.append(Spacer(1, 0.15 * inch))
-
-# Estilos PDF
-wrap_style_compras = ParagraphStyle(
-    name="wrap_compras",
-    fontSize=7,
-    leading=9,
-    spaceAfter=2,
-    wordWrap="CJK",
-)
-
-simple_style_compras = ParagraphStyle(
-    name="simple_compras",
-    fontSize=7,
-    alignment=TA_CENTER,
-)
-
-header_cell_style_compras = ParagraphStyle(
-    name="header_cell_compras",
-    fontSize=7,
-    alignment=TA_CENTER,
-    fontName="Helvetica-Bold",
-    textColor=colors.white,
-)
-
-
-def wrap_pdf_compras(text):
-    return Paragraph(str(text), wrap_style_compras)
-
-
-def simple_pdf_compras(text):
-    return Paragraph(str(text), simple_style_compras)
-
-
-def header_pdf_compras(text):
-    return Paragraph(str(text), header_cell_style_compras)
-
-# Cabeçalho PDF – Compras
-def adicionar_cabecalho_compras(story, df, styles):
-    logo_esq = (
-        Image("assets/brasaobrasil.png", 1.2 * inch, 1.2 * inch)
-        if os.path.exists("assets/brasaobrasil.png")
-        else ""
-    )
-
-    logo_dir = (
-        Image("assets/simbolo_RGB.png", 1.2 * inch, 1.2 * inch)
-        if os.path.exists("assets/simbolo_RGB.png")
-        else ""
-    )
-
-    texto_instituicao = (
-        "<b><font color='#0b2b57' size=13>Ministério da Educação</font></b><br/>"
-        "<b><font color='#0b2b57' size=13>Universidade Federal de Itajubá</font></b><br/>"
-        "<font color='#0b2b57' size=11>Diretoria de Compras e Contratos</font>"
-    )
-
-
-    instituicao = Paragraph(
-        texto_instituicao,
-        ParagraphStyle(
-            "instituicao",
-            alignment=TA_CENTER,
-            leading=16,
-        ),
-    )
-
-    cabecalho = Table(
-        [[logo_esq, instituicao, logo_dir]],
-        colWidths=[1.4 * inch, 4.2 * inch, 1.4 * inch],
-    )
-
-    cabecalho.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
-    )
-
-    story.append(cabecalho)
-    story.append(Spacer(1, 0.25 * inch))
-
-    titulo = Paragraph(
-        "RELATÓRIO DE PROCESSOS DE COMPRAS",
-        ParagraphStyle(
-            "titulo_compras",
-            alignment=TA_CENTER,
-            fontSize=10,
-            leading=14,
-            textColor=colors.black,
-        ),
-    )
-
-    story.append(titulo)
-    story.append(Spacer(1, 0.2 * inch))
-
-    story.append(
-        Paragraph(f"Total de registros: {len(df)}", styles["Normal"])
-    )
-    story.append(Spacer(1, 0.15 * inch))
-
-# Tabela de dados no PDF
-def criar_tabela_dados_compras(story, df, pagesize):
-    if df.empty:
-        return
-
-    story.append(Spacer(1, 0.08 * inch))
-
-    cols = [
-        "Solicitante",
-        "Numero do Processo",
-        "Objeto",
-        "Modalidade",
-        "PREÇO ESTIMADO",
-        "Valor Contratado",
-        "Status",
-        "Data de Entrada",
-        "Data finalização",
-        "Classificação dos processos não concluídos",
-        "CONTRATAÇÃO REINSTRUÍDA PELO PROCESSO Nº",
-    ]
-
-    cols = [c for c in cols if c in df.columns]
-    df_pdf = df.copy()
-
-    header = [header_pdf_compras(c) for c in cols]
-    table_data = [header]
-
-    for _, row in df_pdf[cols].iterrows():
-        linha = []
-        for c in cols:
-            valor = "" if pd.isna(row[c]) else str(row[c]).strip()
-            if c in ["Objeto"]:
-                linha.append(wrap_pdf_compras(valor))
-            else:
-                linha.append(simple_pdf_compras(valor))
-        table_data.append(linha)
-
-    col_widths = [
-        0.7 * inch,
-        1.2 * inch,
-        1.2 * inch,
-        1.2 * inch,
-        1.1 * inch,
-        1.1 * inch,
-        0.9 * inch,
-        0.9 * inch,
-        0.9 * inch,
-        1.2 * inch,
-        1.0 * inch,
-    ]
-    col_widths = col_widths[: len(cols)]
-
-    tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
-
-    style_list = [
-        (
-            "BACKGROUND",
-            (0, 0),
-            (-1, 0),
-            colors.HexColor("#0b2b57"),
-        ),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-        ("FONTSIZE", (0, 0), (-1, 0), 7),
-        ("FONTWEIGHT", (0, 0), (-1, 0), "bold"),
-        ("TOPPADDING", (0, 0), (-1, 0), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-        (
-            "LINEBELOW",
-            (0, 0),
-            (-1, 0),
-            1.5,
-            colors.HexColor("#0b2b57"),
-        ),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 1), (-1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("FONTSIZE", (0, 1), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING", (0, 0), (-1, -1), 2),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        # Linhas alternadas em branco e cinza claro
-        (
-            "ROWBACKGROUNDS",
-            (0, 1),
-            (-1, -1),
-            [colors.white, colors.HexColor("#f0f0f0")],
-        ),
-        ("WORDWRAP", (0, 0), (-1, -1), True),
-    ]
-
-    tbl.setStyle(TableStyle(style_list))
-    story.append(tbl)
-
 # --------------------------------------------------
 # CALLBACK: GERAR PDF DE PROCESSOS DE COMPRAS
 # --------------------------------------------------
@@ -1650,49 +1086,4 @@ def gerar_pdf_proc(n, dados_proc):
     if not n or not dados_proc:
         return None
 
-    df = pd.DataFrame(dados_proc)
-
-    # Dataframe numérico para os cards
-    df_cards = df.copy()
-    df_cards["Valor Contratado"] = pd.to_numeric(
-        df_cards["Valor Contratado"], errors="coerce"
-    ).fillna(0)
-
-    # Dataframe para tabela do PDF
-    df_pdf = df.copy()
-    df_pdf["PREÇO ESTIMADO"] = df_pdf["PREÇO ESTIMADO"].apply(formatar_moeda)
-    df_pdf["Valor Contratado"] = df_pdf["Valor Contratado"].apply(
-        formatar_moeda
-    )
-    df_pdf["Data de Entrada"] = pd.to_datetime(
-        df_pdf["Data de Entrada"], format="%d/%m/%Y", errors="coerce"
-    ).dt.strftime("%d/%m/%Y")
-    df_pdf["Data finalização"] = pd.to_datetime(
-        df_pdf["Data finalização"], errors="coerce"
-    ).dt.strftime("%d/%m/%Y")
-
-    buffer = BytesIO()
-    pagesize = landscape(A4)
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=pagesize,
-        rightMargin=0.15 * inch,
-        leftMargin=0.15 * inch,
-        topMargin=0.2 * inch,
-        bottomMargin=0.4 * inch,
-    )
-
-    styles = getSampleStyleSheet()
-    story = []
-
-    adicionar_cabecalho_compras(story, df_pdf, styles)
-    criar_cards_resumo_pdf(story, df_cards, pagesize)
-    criar_tabela_dados_compras(story, df_pdf, pagesize)
-
-    doc.build(story)
-    buffer.seek(0)
-
-    return dcc.send_bytes(
-        buffer.getvalue(),
-        f"processos_compras_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf",
-    )
+    return gerar_pdf_processos(dados_proc)

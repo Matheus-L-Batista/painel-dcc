@@ -24,6 +24,8 @@ import threading
 import pickle
 import re
 
+from utils.runtime import format_datetime_sp, get_cache_dir, now_sp
+
 
 # --------------------------------------------------
 # Função para verificar se estamos na página de contratos
@@ -159,8 +161,7 @@ _DF_CACHE = None
 _DF_CACHE_AT = None
 
 _CACHE_DIR = os.path.join(
-    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
-    ".cache_contratos",
+    str(get_cache_dir("contratos")),
 )
 os.makedirs(_CACHE_DIR, exist_ok=True)
 _CACHE_FILE = os.path.join(_CACHE_DIR, "df_contratos.pkl")
@@ -168,16 +169,11 @@ _CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
 
 
 def _now_sp():
-    return datetime.now(timezone("America/Sao_Paulo"))
+    return now_sp()
 
 
 def _fmt_dt(dt):
-    if not dt:
-        return "-"
-    try:
-        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
-    except Exception:
-        return dt.strftime("%d/%m/%Y %H:%M:%S")
+    return format_datetime_sp(dt)
 
 
 def _load_disk_cache():

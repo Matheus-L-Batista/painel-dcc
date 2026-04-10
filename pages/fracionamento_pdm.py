@@ -27,6 +27,8 @@ import os
 import threading
 import pickle
 
+from utils.runtime import format_datetime_sp, get_cache_dir, now_sp
+
 # --------------------------------------------------
 # Registro da página
 # --------------------------------------------------
@@ -104,8 +106,7 @@ _DF_CACHE = None
 _DF_CACHE_AT = None
 
 _CACHE_DIR = os.path.join(
-    os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(),
-    ".cache_pdm"
+    str(get_cache_dir("fracionamento_pdm"))
 )
 os.makedirs(_CACHE_DIR, exist_ok=True)
 _CACHE_FILE = os.path.join(_CACHE_DIR, "df_pdm.pkl")
@@ -113,16 +114,11 @@ _CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
 
 
 def _now_sp():
-    return datetime.now(timezone("America/Sao_Paulo"))
+    return now_sp()
 
 
 def _fmt_dt(dt):
-    if not dt:
-        return "-"
-    try:
-        return dt.astimezone(timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
-    except Exception:
-        return dt.strftime("%d/%m/%Y %H:%M:%S")
+    return format_datetime_sp(dt)
 
 
 def _load_disk_cache():
@@ -207,6 +203,47 @@ def pdms_unicos(df_base: pd.DataFrame):
     )
 
 
+COLS_TABELA_PDM = [
+    COL_PDM,
+    "Descrição",
+    "Valor Empenhado",
+    "Limite da Dispensa",
+    "Saldo para contratação",
+]
+
+
+def fmt_moeda(v):
+    if pd.isna(v):
+        return ""
+    return "R$ " + (f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+
+def filtrar_dados_pdm(df_base: pd.DataFrame, pdm_lista=None):
+    dff = df_base.copy() if df_base is not None else pd.DataFrame()
+
+    if dff.empty:
+        return dff
+
+    dff = dff[dff[COL_PDM] != "00000"]
+
+    if pdm_lista:
+        dff = dff[dff[COL_PDM].isin(pdm_lista)]
+
+    for c in COLS_TABELA_PDM:
+        if c not in dff.columns:
+            dff[c] = pd.NA
+
+    return dff
+
+
+def preparar_payload_tabela_pdm(dff: pd.DataFrame):
+    dff_display = dff[COLS_TABELA_PDM].copy()
+    dff_display["Valor Empenhado_fmt"] = dff_display["Valor Empenhado"].apply(fmt_moeda)
+    dff_display["Limite da Dispensa_fmt"] = dff_display["Limite da Dispensa"].apply(fmt_moeda)
+    dff_display["Saldo para contratação_fmt"] = dff_display["Saldo para contratação"].apply(fmt_moeda)
+    return dff_display
+
+
 # --------------------------------------------------
 # Estilos
 # --------------------------------------------------
@@ -248,18 +285,75 @@ botao_pdf_style = {
 }
 
 card_padrao_style = {
-    "border": "1px solid #bfdbfe",
+    "border": "1px solid #e5e7eb",
     "borderRadius": "8px",
-    "padding": "10px 16px",
+    "padding": "8px 12px",
     "backgroundColor": "#ffffff",
-    "minWidth": "180px",
-    "width": "180px",
-    "height": "70px",
-    "boxShadow": "0 1px 2px rgba(0,0,0,0.06)",
-    "fontSize": "12px",
+    "minWidth": "140px",
+    "width": "140px",
+    "height": "54px",
+    "boxShadow": "0 6px 18px rgba(15, 23, 42, 0.10)",
+    "fontSize": "11px",
     "display": "flex",
     "flexDirection": "column",
     "justifyContent": "center",
+}
+
+texto_orientacao_style = {
+    "flex": "0 0 36%",
+    "borderRight": "1px solid #e5e7eb",
+    "padding": "12px 18px",
+    "minWidth": "380px",
+    "maxWidth": "560px",
+    "fontSize": "13px",
+    "lineHeight": "1.25",
+    "textAlign": "left",
+    "backgroundColor": "#ffffff",
+    "color": "#111827",
+    "overflowY": "auto",
+    "height": "100vh",
+    "boxSizing": "border-box",
+}
+
+painel_dados_style = {
+    "flex": "1 1 64%",
+    "padding": "14px 16px",
+    "minWidth": "0",
+    "backgroundColor": "#f3f4f6",
+    "boxSizing": "border-box",
+}
+
+cabecalho_painel_style = {
+    "backgroundColor": "#0b2b57",
+    "borderRadius": "8px",
+    "padding": "16px",
+    "marginBottom": "12px",
+    "display": "flex",
+    "alignItems": "center",
+    "justifyContent": "space-between",
+    "gap": "16px",
+    "flexWrap": "wrap",
+    "boxShadow": "0 8px 22px rgba(15, 23, 42, 0.16)",
+}
+
+filtros_fracionamento_style = {
+    "backgroundColor": "#ffffff",
+    "border": "1px solid #e5e7eb",
+    "borderRadius": "8px",
+    "padding": "10px 12px",
+    "marginBottom": "10px",
+    "boxShadow": "0 2px 8px rgba(15, 23, 42, 0.06)",
+}
+
+alerta_orientacao_style = {
+    "backgroundColor": "#d92d20",
+    "color": "#ffffff",
+    "borderRadius": "8px",
+    "padding": "10px 12px",
+    "margin": "10px 0 0 0",
+    "fontWeight": "600",
+    "lineHeight": "1.35",
+    "boxShadow": "0 4px 12px rgba(217, 45, 32, 0.25)",
 }
 
 # --------------------------------------------------
@@ -270,35 +364,35 @@ layout = html.Div(
         "display": "flex",
         "flexDirection": "row",
         "width": "100%",
-        "gap": "10px",
-        "backgroundColor": "white",
+        "minHeight": "100vh",
+        "gap": "0",
+        "backgroundColor": "#f3f4f6",
     },
     children=[
         dcc.Location(id="url"),
         # Coluna esquerda (texto)
         html.Div(
             id="coluna_esquerda_pdm",
-            style={
-                "flex": "1 1 33%",
-                "borderRight": "1px solid #ccc",
-                "padding": "5px",
-                "minWidth": "280px",
-                "fontSize": "13px",
-                "textAlign": "justify",
-                "backgroundColor": "white",
-            },
+            style=texto_orientacao_style,
             children=[
+                html.Div(
+                    "Limite de Gasto – Itajubá por PDM",
+                    style={
+                        "fontSize": "20px",
+                        "fontWeight": "800",
+                        "lineHeight": "1.2",
+                        "color": "#0b2b57",
+                        "marginBottom": "10px",
+                    },
+                ),
                 html.P("Prezado requisitante,"),
-                html.Br(),
                 html.P(
                     "Em atenção ao acórdão nº 324/2009 Plenário TCU, "
                     "“Planeje adequadamente as compras e a contratação de "
                     "serviços durante o exercício financeiro, de forma a "
                     "evitar a prática de fracionamento de despesas”."
                 ),
-                html.Br(),
                 html.P("Assim dispõe a IN SEGES/ME nº 67/2021:"),
-                html.Br(),
                 html.P(
                     "Art. 4º Os órgãos e entidades adotarão a dispensa de "
                     "licitação, na forma eletrônica, nas seguintes hipóteses:"
@@ -319,9 +413,7 @@ layout = html.Div(
                     "Sistema de Catalogação de Serviços ou de Obras do "
                     "Governo federal. (NR)"
                 ),
-                html.Br(),
                 html.P("Em resumo: Para materiais - PDM; para serviços - CATSER."),
-                html.Br(),
                 html.P(
                     [
                         "Para obtenção do PDM: no catálogo de compras disponível em ",
@@ -335,7 +427,6 @@ layout = html.Div(
                         "retornará os dados do serviço. Esse é o número que deverá ser considerado.",
                     ]
                 ),
-                html.Br(),
                 html.P("Exemplo para a necessidade de contratação de três itens:"),
                 html.P(
                     "1) o somatório do valor obtido na pesquisa de mercado para "
@@ -346,52 +437,38 @@ layout = html.Div(
                     "2) O valor por item deverá obrigatoriamente ser igual ou "
                     "inferior ao saldo para contratação (PDM ou CATSER) desse item."
                 ),
-                html.Br(),
                 html.P(
                     "Os valores informados na tabela são os já empenhados no "
                     "exercício por PDM ou CATSER."
                 ),
-                html.Br(),
-                html.P(
+                html.Div(
                     "O processo de compra deverá vir instruído já na modalidade "
                     "DISPENSA DE LICITAÇÃO. A tela de consulta (Relatório PDF) "
                     "deverá estar apensado ao processo, que será conferido pelo "
                     "Setor de Compras e, somente a partir do resultado dessa "
                     "conferência, o processo prosseguirá.",
-                    style={"color": "red"},
+                    style=alerta_orientacao_style,
                 ),
             ],
         ),
         # Coluna direita (filtros + tabela)
         html.Div(
             id="coluna_direita_pdm",
-            style={"flex": "2 1 67%", "padding": "5px", "minWidth": "400px"},
+            style=painel_dados_style,
             children=[
                 html.Div(
-                    style={
-                        "backgroundColor": "#0b2b57",
-                        "borderRadius": "8px",
-                        "padding": "12px 14px",
-                        "marginBottom": "10px",
-                        "display": "flex",
-                        "alignItems": "center",
-                        "justifyContent": "space-between",
-                        "gap": "16px",
-                        "flexWrap": "wrap",
-                    },
+                    style=cabecalho_painel_style,
                     children=[
                         html.Div(
                             style={
                                 "display": "flex",
                                 "flexDirection": "column",
-                                "gap": "3px",
-                                "maxWidth": "520px",
+                                "gap": "6px",
+                                "flex": "1 1 420px",
+                                "minWidth": "320px",
+                                "maxWidth": "680px",
                             },
                             children=[
-                                html.H4(
-                                    "Limite de Gasto – Itajubá por PDM",
-                                    style={"margin": "0px", "color": "white"},
-                                ),
                                 html.Div(
                                     children=[
                                         html.Span(
@@ -402,7 +479,11 @@ layout = html.Div(
                                             "O valor de cada item não poderá exceder o Saldo para Contratação."
                                         ),
                                     ],
-                                    style={"color": "#fecaca", "fontSize": "12px"},
+                                    style={
+                                        "color": "#ffffff",
+                                        "fontSize": "12px",
+                                        "lineHeight": "1.25",
+                                    },
                                 ),
                             ],
                         ),
@@ -422,14 +503,15 @@ layout = html.Div(
                                             style={
                                                 "fontWeight": "bold",
                                                 "color": "#374151",
-                                                "marginBottom": "2px",
+                                                "marginBottom": "1px",
                                                 "textAlign": "center",
+                                                "lineHeight": "1.1",
                                             },
                                         ),
                                         html.Div(
                                             "R$ 65.492,11",
                                             style={
-                                                "fontSize": "18px",
+                                                "fontSize": "16px",
                                                 "fontWeight": "bold",
                                                 "color": "#166534",
                                                 "textAlign": "center",
@@ -445,15 +527,16 @@ layout = html.Div(
                                             style={
                                                 "fontWeight": "bold",
                                                 "color": "#374151",
-                                                "marginBottom": "2px",
+                                                "marginBottom": "1px",
                                                 "textAlign": "center",
+                                                "lineHeight": "1.1",
                                             },
                                         ),
                                         html.Div(
                                             id="card_data_consulta_pdm",
                                             children=date.today().strftime("%d/%m/%Y"),
                                             style={
-                                                "fontSize": "18px",
+                                                "fontSize": "16px",
                                                 "fontWeight": "bold",
                                                 "color": "#111827",
                                                 "textAlign": "center",
@@ -468,6 +551,7 @@ layout = html.Div(
                 html.Div(
                     id="barra_filtros_limite_itajuba_pdm",
                     className="filtros-sticky",
+                    style=filtros_fracionamento_style,
                     children=[
                         # Primeira linha: PDM (digitação)
                         html.Div(
@@ -493,7 +577,15 @@ layout = html.Div(
                                                 "Digite parte do CATSER, selecione na lista e, "
                                                 "após a seleção, apague o texto digitado."
                                             ),
-                                            style={"width": "100%", "marginBottom": "6px"},
+                                            style={
+                                                "width": "100%",
+                                                "marginBottom": "8px",
+                                                "height": "30px",
+                                                "border": "1px solid #cbd5e1",
+                                                "borderRadius": "4px",
+                                                "padding": "4px 8px",
+                                                "boxSizing": "border-box",
+                                            },
                                         ),
                                     ],
                                 ),
@@ -513,12 +605,13 @@ layout = html.Div(
                                     style={
                                         "minWidth": "220px",
                                         "flex": "1 1 100%",
-                                        "maxHeight": "130px",
+                                        "maxHeight": "104px",
                                         "overflowY": "auto",
-                                        "border": "1px solid #d1d5db",
+                                        "border": "1px solid #cbd5e1",
                                         "borderRadius": "4px",
-                                        "padding": "4px",
+                                        "padding": "6px 8px",
                                         "fontSize": "11px",
+                                        "backgroundColor": "#f8fafc",
                                     },
                                     children=[
                                         html.Label("PDM (lista)"),
@@ -529,14 +622,16 @@ layout = html.Div(
                                             style={
                                                 "display": "flex",
                                                 "flexWrap": "wrap",
-                                                "columnGap": "8px",
+                                                "justifyContent": "center",
+                                                "columnGap": "10px",
                                                 "rowGap": "2px",
                                             },
                                             inputStyle={"marginRight": "4px"},
                                             labelStyle={
                                                 "display": "inline-block",
-                                                "width": "18%",
+                                                "width": "14%",
                                                 "fontSize": "11px",
+                                                "lineHeight": "1.5",
                                             },
                                         ),
                                     ],
@@ -590,24 +685,46 @@ layout = html.Div(
                         {"name": "Saldo para contratação (R$)", "id": "Saldo para contratação_fmt"},
                     ],
                     data=[],
-                    page_action="none",
+                    page_action="custom",
+                    page_current=0,
+                    page_size=15,
                     row_selectable=False,
                     cell_selectable=False,
                     style_table={
-                        "overflowX": "auto",
+                        "overflowX": "hidden",
                         "overflowY": "auto",
-                        "height": "calc(100vh - 350px)",
-                        "minHeight": "300px",
+                        "width": "100%",
+                        "height": "calc(100vh - 405px)",
+                        "minHeight": "260px",
                         "position": "relative",
+                        "border": "1px solid #e5e7eb",
+                        "borderRadius": "8px",
+                        "backgroundColor": "#ffffff",
                     },
                     style_cell={
                         "textAlign": "center",
-                        "padding": "4px",
-                        "fontSize": "11px",
-                        "minWidth": "80px",
-                        "maxWidth": "260px",
+                        "padding": "7px 8px",
+                        "fontSize": "12px",
+                        "fontFamily": "Arial, sans-serif",
+                        "minWidth": "0",
+                        "maxWidth": "none",
                         "whiteSpace": "normal",
+                        "height": "auto",
+                        "lineHeight": "1.35",
                     },
+                    style_cell_conditional=[
+                        {"if": {"column_id": COL_PDM}, "width": "10%"},
+                        {"if": {"column_id": "Descrição"}, "width": "34%", "textAlign": "left"},
+                        {"if": {"column_id": "Valor Empenhado_fmt"}, "width": "18%"},
+                        {"if": {"column_id": "Limite da Dispensa_fmt"}, "width": "18%"},
+                        {"if": {"column_id": "Saldo para contratação_fmt"}, "width": "20%"},
+                    ],
+                    css=[
+                        {
+                            "selector": ".dash-spreadsheet-container .dash-spreadsheet-inner table",
+                            "rule": "table-layout: fixed; width: 100%;",
+                        },
+                    ],
                     style_header={
                         "fontWeight": "bold",
                         "backgroundColor": "#0b2b57",
@@ -631,7 +748,6 @@ layout = html.Div(
                         },
                     ],
                 ),
-                dcc.Store(id="store_dados_limite_itajuba_pdm"),
                 dcc.Store(id="store-reload-pdm"),
                 dcc.Interval(id="interval-reload-pdm", interval=60 * 60 * 1000, n_intervals=0),  # 1h
             ],
@@ -656,7 +772,7 @@ def carregar_ao_abrir_interval_ou_recarregar_pdm(pathname, _n_intervals, n_click
     if pathname != "/fracionamento_pdm":
         raise PreventUpdate
 
-    force = bool(n_clicks) and n_clicks > 0
+    force = dash.ctx.triggered_id == "btn_reload_pdm"
     df, status = get_df_pdm(force=force)
 
     base = pdms_unicos(df)
@@ -705,63 +821,28 @@ def atualizar_opcoes_pdm(pdm_texto, _reload, valores_selecionados):
 # --------------------------------------------------
 @dash.callback(
     Output("tabela_limite_itajuba_pdm", "data"),
-    Output("store_dados_limite_itajuba_pdm", "data"),
+    Output("tabela_limite_itajuba_pdm", "page_count"),
     Input("store-reload-pdm", "data"),
     Input("filtro_pdm_lista_itajuba", "value"),
+    Input("tabela_limite_itajuba_pdm", "page_current"),
+    Input("tabela_limite_itajuba_pdm", "page_size"),
 )
-def atualizar_tabela_limite_itajuba_pdm_pdm(_reload, pdm_lista):
+def atualizar_tabela_limite_itajuba_pdm_pdm(_reload, pdm_lista, page_current, page_size):
     df_base, _ = get_df_pdm(force=False)
-    dff = df_base.copy() if df_base is not None else pd.DataFrame()
+    dff = filtrar_dados_pdm(df_base, pdm_lista)
 
     if dff.empty:
-        return [], []
+        return [], 0
 
-    # Remove sempre o CATSER 00000
-    dff = dff[dff[COL_PDM] != "00000"]
+    page_current = page_current or 0
+    page_size = page_size or 15
+    page_count = max(1, (len(dff) + page_size - 1) // page_size)
+    page_current = min(page_current, page_count - 1)
+    start = page_current * page_size
+    end = start + page_size
+    dff_payload = preparar_payload_tabela_pdm(dff.iloc[start:end])
 
-    if pdm_lista:
-        dff = dff[dff[COL_PDM].isin(pdm_lista)]
-
-    cols_tabela = [
-        COL_PDM,
-        "Descrição",
-        "Valor Empenhado",
-        "Limite da Dispensa",
-        "Saldo para contratação",
-    ]
-
-    for c in cols_tabela:
-        if c not in dff.columns:
-            dff[c] = pd.NA
-
-    dff_display = dff[cols_tabela].copy()
-
-    def fmt_moeda(v):
-        if pd.isna(v):
-            return ""
-        return "R$ " + (f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-
-    dff_display["Valor Empenhado_fmt"] = dff_display["Valor Empenhado"].apply(fmt_moeda)
-    dff_display["Limite da Dispensa_fmt"] = dff_display["Limite da Dispensa"].apply(fmt_moeda)
-    dff_display["Saldo para contratação_fmt"] = dff_display["Saldo para contratação"].apply(fmt_moeda)
-
-    cols_tabela_display = [
-        COL_PDM,
-        "Descrição",
-        "Valor Empenhado_fmt",
-        "Limite da Dispensa_fmt",
-        "Saldo para contratação_fmt",
-    ]
-
-    # Mantém as colunas numéricas brutas no payload da tabela para que
-    # as regras de colorização por filter_query funcionem corretamente,
-    # sem exibir colunas extras ao usuário.
-    dff_payload = dff_display.copy()
-
-    return (
-        dff_payload.to_dict("records"),
-        dff.to_dict("records"),
-    )
+    return dff_payload.to_dict("records"), page_count
 
 
 @dash.callback(
@@ -817,18 +898,17 @@ def wrap_desc(text):
 @dash.callback(
     Output("download_relatorio_limite_itajuba_pdm", "data"),
     Input("btn_download_relatorio_limite_itajuba_pdm_pdm", "n_clicks"),
-    State("store_dados_limite_itajuba_pdm", "data"),
+    State("filtro_pdm_lista_itajuba", "value"),
     prevent_initial_call=True,
 )
-def gerar_pdf_limite_itajuba_pdm(n, dados):
-    if not n or not dados:
+def gerar_pdf_limite_itajuba_pdm(n, pdm_lista):
+    if not n:
         return None
 
-    df = pd.DataFrame(dados)
-
-    # Garante também no PDF que o CATSER 00000 não apareça
-    if COL_PDM in df.columns:
-        df = df[df[COL_PDM] != "00000"]
+    df_base, _ = get_df_pdm(force=False)
+    df = filtrar_dados_pdm(df_base, pdm_lista)
+    if df.empty:
+        return None
 
     buffer = BytesIO()
     pagesize = portrait(A4)
