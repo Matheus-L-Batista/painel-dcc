@@ -325,18 +325,20 @@ html, body {
 .dash-table-container {
     width: 100%;
     overflow-x: auto !important;
-    overflow-y: visible !important;
+    overflow-y: auto !important;
     border-radius: 14px;
 }
 
 .dash-table-container .dash-spreadsheet-container {
     border-radius: 14px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .dash-table-container .dash-spreadsheet-inner {
     border-radius: 14px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .dash-table-container table {
