@@ -124,12 +124,115 @@ def _safe_unique_sorted(df, col):
 button_style = {
     "backgroundColor": "#0b2b57",
     "color": "white",
-    "padding": "8px 16px",
+    "padding": "10px 18px",
     "border": "none",
-    "borderRadius": "4px",
+    "borderRadius": "10px",
     "cursor": "pointer",
-    "fontSize": "14px",
+    "fontSize": "12px",
     "fontWeight": "bold",
+    "boxShadow": "0 4px 12px rgba(11, 43, 87, 0.18)",
+}
+
+page_style = {
+    "padding": "14px",
+    "backgroundColor": "#f6f8fb",
+    "minHeight": "100vh",
+}
+
+page_content_style = {
+    "maxWidth": "1500px",
+    "margin": "0 auto",
+}
+
+card_shell_style = {
+    "backgroundColor": "white",
+    "border": "1px solid #e6ebf2",
+    "borderRadius": "14px",
+    "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
+}
+
+section_title_style = {
+    "textAlign": "center",
+    "backgroundColor": "#0b2b57",
+    "color": "white",
+    "padding": "10px 14px",
+    "margin": "0",
+    "borderRadius": "14px 14px 0 0",
+    "fontSize": "14px",
+    "fontWeight": "700",
+    "letterSpacing": "0.2px",
+}
+
+table_container_style = {
+    "overflowX": "auto",
+    "width": "100%",
+    "border": "1px solid #d9e2ec",
+    "borderRadius": "0 0 14px 14px",
+    "overflow": "hidden",
+}
+
+table_container_full_style = {
+    "overflowX": "auto",
+    "width": "100%",
+    "border": "1px solid #d9e2ec",
+    "borderRadius": "14px",
+    "overflow": "hidden",
+}
+
+table_cell_style = {
+    "textAlign": "center",
+    "padding": "10px 8px",
+    "fontSize": "12px",
+    "whiteSpace": "normal",
+    "lineHeight": "1.35",
+    "border": "1px solid #e4e8ef",
+}
+
+table_cell_left_style = {
+    **table_cell_style,
+    "textAlign": "left",
+}
+
+table_header_light_style = {
+    "fontWeight": "bold",
+    "backgroundColor": "#f3f6fb",
+    "color": "#0b2b57",
+    "textAlign": "center",
+    "padding": "10px 8px",
+    "border": "1px solid #d9e2ec",
+}
+
+table_header_dark_style = {
+    "fontWeight": "bold",
+    "backgroundColor": "#0b2b57",
+    "color": "white",
+    "textAlign": "center",
+    "padding": "10px 8px",
+    "border": "1px solid #0b2b57",
+}
+
+table_header_compact_dark_style = {
+    **table_header_dark_style,
+    "padding": "6px 4px",
+    "fontSize": "11px",
+    "height": "32px",
+}
+
+info_pill_style = {
+    "fontSize": "12px",
+    "color": "#334155",
+    "backgroundColor": "#f8fafc",
+    "border": "1px solid #e6ebf2",
+    "borderRadius": "999px",
+    "padding": "8px 12px",
+}
+
+top_banner_style = {
+    **card_shell_style,
+    "padding": "18px 20px",
+    "background": "linear-gradient(135deg, #0b2b57 0%, #12396f 100%)",
+    "color": "white",
+    "textAlign": "center",
 }
 
 # ===== FUNÇÕES AUXILIARES =====
@@ -372,24 +475,19 @@ def gerar_grupo_fiscalizacao_otimizado(df_local, indice):
 
 # ===== LAYOUT DASH =====
 layout = html.Div(
+    style=page_style,
     children=[
         # Barra de filtros
         html.Div(
             id="barra_filtros_extrato",
             className="filtros-sticky",
-            style={
-                "position": "relative",
-                "zIndex": 1100,
-                "backgroundColor": "white",
-                "padding": "10px",
-                "borderBottom": "1px solid #ddd",
-            },
+            style={**card_shell_style, "position": "relative", "zIndex": 1100, "padding": "14px 16px"},
             children=[
                 html.Div(
                     style={
                         "display": "flex",
                         "flexWrap": "wrap",
-                        "gap": "15px",
+                        "gap": "12px",
                         "alignItems": "flex-start",
                     },
                     children=[
@@ -397,7 +495,7 @@ layout = html.Div(
                         html.Div(
                             style={"minWidth": "250px", "flex": "1 1 250px"},
                             children=[
-                                html.Label("Contrato", style={"fontWeight": "bold", "marginBottom": "5px"}),
+                                html.Label("Contrato", style={"fontWeight": "bold", "marginBottom": "5px", "color": "#0b2b57"}),
                                 dcc.Dropdown(
                                     id="filtro_contrato_extrato",
                                     options=[],
@@ -412,7 +510,7 @@ layout = html.Div(
                         html.Div(
                             style={"minWidth": "300px", "flex": "2 1 300px"},
                             children=[
-                                html.Label("Contratada", style={"fontWeight": "bold", "marginBottom": "5px"}),
+                                html.Label("Contratada", style={"fontWeight": "bold", "marginBottom": "5px", "color": "#0b2b57"}),
                                 dcc.Dropdown(
                                     id="filtro_contratada_extrato",
                                     options=[],
@@ -431,7 +529,7 @@ layout = html.Div(
                         "display": "flex",
                         "alignItems": "center",
                         "justifyContent": "space-between",
-                        "marginTop": "15px",
+                        "marginTop": "10px",
                         "flexWrap": "wrap",
                         "gap": "10px",
                     },
@@ -466,17 +564,13 @@ html.Button(
                                     id="info_filtros",
                                     style={
                                         "fontSize": "12px",
-                                        "color": "#666",
+                                        "color": "#64748b",
                                         "fontStyle": "italic",
                                     },
                                 ),
                                 html.Div(
                                     id="info-atualizacao-extrato",
-                                    style={
-                                        "fontSize": "12px",
-                                        "color": "#666",
-                                        "marginTop": "4px",
-                                    },
+                                    style={**info_pill_style, "marginTop": "6px", "display": "inline-block"},
                                 ),
                             ]
                         ),
@@ -490,169 +584,82 @@ html.Button(
             style={
                 "display": "flex",
                 "flexDirection": "column",
-                "gap": "20px",
-                "marginTop": "10px",
-                "padding": "0 10px",
+                "gap": "18px",
+                "marginTop": "14px",
             },
             children=[
                 # Cartão Contrato
                 html.Div(
                     id="card_numero_contrato",
-                    style={
-                        "marginTop": "10px",
-                        "padding": "15px 0",
-                        "backgroundColor": "#0b2b57",
-                        "border": "2px solid #0b2b57",
-                        "borderRadius": "6px",
-                        "width": "100%",
-                        "textAlign": "center",
-                        "color": "white",
-                    },
+                    style=top_banner_style,
                     children=[
                         html.Span(
                             "CONTRATO ",
-                            style={"fontSize": "16px", "marginRight": "5px","fontFamily": "Arial"},
+                            style={"fontSize": "13px", "marginRight": "6px", "opacity": "0.85", "letterSpacing": "1px"},
                         ),
                         html.Span(
                             id="valor_numero_contrato",
-                            style={"fontSize": "24px", "fontWeight": "bold"},
+                            style={"fontSize": "32px", "fontWeight": "bold"},
                         ),
                     ],
                 ),
 
                 # INFORMAÇÕES DO CONTRATO
                 html.Div(
-                    style={
-                        "width": "100%",
-                        "position": "relative",
-                        "zIndex": 1,
-                    },
+                    style={**card_shell_style, "width": "100%", "position": "relative", "zIndex": 1},
                     children=[
                         html.H4(
                             "INFORMAÇÕES DO CONTRATO",
-                            style={
-                                "textAlign": "center",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "padding": "8px 0",
-                                "margin": "0",
-                                "borderRadius": "4px 4px 0 0",
-                            },
+                            style=section_title_style,
                         ),
                         dash_table.DataTable(
                             id="tabela_extrato_info",
                             columns=[{"name": col, "id": col} for col in cols_contrato_info],
                             data=[],
-                            style_table={
-                                "overflowX": "auto",
-                                "width": "100%",
-                                "border": "1px solid #ddd",
-                                "borderRadius": "0 0 4px 4px",
-                            },
-                            style_cell={
-                                "textAlign": "center",
-                                "padding": "8px",
-                                "fontSize": "13px",
-                                "whiteSpace": "normal",
-                            },
-                            style_header={
-                                "fontWeight": "bold",
-                                "backgroundColor": "#f0f0f0",
-                                "color": "black",
-                                "textAlign": "center",
-                            },
+                            style_table=table_container_style,
+                            style_cell=table_cell_style,
+                            style_header=table_header_light_style,
                         ),
                     ],
                 ),
 
                 # VALORES DO CONTRATO
                 html.Div(
-                    style={
-                        "width": "100%",
-                        "position": "relative",
-                        "zIndex": 1,
-                    },
+                    style={**card_shell_style, "width": "100%", "position": "relative", "zIndex": 1},
                     children=[
                         html.H4(
                             "VALORES DO CONTRATO",
-                            style={
-                                "textAlign": "center",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "padding": "8px 0",
-                                "margin": "0",
-                                "borderRadius": "4px 4px 0 0",
-                            },
+                            style=section_title_style,
                         ),
                         dash_table.DataTable(
                             id="tabela_extrato_valores",
                             columns=[{"name": col, "id": col} for col in cols_contrato_valores],
                             data=[],
-                            style_table={
-                                "overflowX": "auto",
-                                "width": "100%",
-                                "border": "1px solid #ddd",
-                                "borderRadius": "0 0 4px 4px",
-                            },
-                            style_cell={
-                                "textAlign": "center",
-                                "padding": "8px",
-                                "fontSize": "13px",
-                                "whiteSpace": "normal",
-                            },
-                            style_header={
-                                "fontWeight": "bold",
-                                "backgroundColor": "#f0f0f0",
-                                "color": "black",
-                                "textAlign": "center",
-                            },
+                            style_table=table_container_style,
+                            style_cell=table_cell_style,
+                            style_header=table_header_light_style,
                         ),
                     ],
                 ),
 
                 # OBJETO (COM HEADER AZUL E SEM TÍTULO EXTERNO)
                 html.Div(
-                    style={
-                        "width": "100%",
-                        "position": "relative",
-                        "zIndex": 1,
-                    },
+                    style={**card_shell_style, "width": "100%", "position": "relative", "zIndex": 1},
                     children=[
                         dash_table.DataTable(
                             id="tabela_extrato_objeto",
                             columns=[{"name": "OBJETO", "id": "Objeto"}],
                             data=[],
-                            style_table={
-                                "overflowX": "auto",
-                                "width": "100%",
-                                "border": "1px solid #ddd",
-                                "borderRadius": "4px",
-                            },
-                            style_cell={
-                                "textAlign": "left",
-                                "padding": "10px",
-                                "fontSize": "13px",
-                                "whiteSpace": "normal",
-                            },
-                            style_header={
-                                "fontWeight": "bold",
-                                "backgroundColor": "#0b2b57",  # AZUL
-                                "color": "white",
-                                "textAlign": "center",
-                                "fontSize": "13px",
-                                "fontFamily": "Arial",
-                            },
+                            style_table=table_container_full_style,
+                            style_cell=table_cell_left_style,
+                            style_header=table_header_dark_style,
                         ),
                     ],
                 ),
 
                 # COMPRASNET (COM HEADER AZUL E SEM TÍTULO EXTERNO)
                 html.Div(
-                    style={
-                        "width": "100%",
-                        "position": "relative",
-                        "zIndex": 1,
-                    },
+                    style={**card_shell_style, "width": "100%", "position": "relative", "zIndex": 1},
                     children=[
                         dash_table.DataTable(
                             id="tabela_extrato_comprasnet",
@@ -662,78 +669,38 @@ html.Button(
                                 "presentation": "markdown",
                             }],
                             data=[],
-                            style_table={
-                                "overflowX": "auto",
-                                "width": "100%",
-                                "border": "1px solid #ddd",
-                                "borderRadius": "4px",
-                            },
+                            style_table=table_container_full_style,
                             style_cell={
-                                "textAlign": "center",
-                                "padding": "10px",
-                                "fontSize": "13px",
-                                "whiteSpace": "normal",
+                                **table_cell_style,
                                 "height": "60px",
                                 "verticalAlign": "middle",
                             },
-                            style_header={
-                                "fontWeight": "bold",
-                                "backgroundColor": "#0b2b57",  # AZUL
-                                "color": "white",
-                                "textAlign": "center",
-                                "fontSize": "13px",
-                                "fontFamily": "Arial",
-                            },
+                            style_header=table_header_dark_style,
                         ),
                     ],
                 ),
 
                 # FISCALIZAÇÃO
                 html.Div(
-                    style={
-                        "width": "100%",
-                        "position": "relative",
-                        "zIndex": 1,
-                    },
+                    style={**card_shell_style, "width": "100%", "position": "relative", "zIndex": 1},
                     children=[
                         html.H4(
                             "EQUIPE DE FISCALIZAÇÃO DO CONTRATO",
-                            style={
-                                "textAlign": "center",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "padding": "8px 0",
-                                "margin": "0",
-                                "borderRadius": "4px 4px 0 0",
-                            },
+                            style=section_title_style,
                         ),
                         dash_table.DataTable(
                             id="tabela_extrato_fiscalizacao",
                             columns=[],  # Serão preenchidas dinamicamente
                             data=[],
-                            style_table={
-                                "overflowX": "auto",
-                                "width": "100%",
-                                "border": "1px solid #ddd",
-                                "borderRadius": "0 0 4px 4px",
-                            },
+                            style_table=table_container_style,
                             style_cell={
-                                "textAlign": "center",
+                                **table_cell_style,
                                 "padding": "10px 4px",
-                                "fontSize": "12px",
                                 "whiteSpace": "pre-line",  # IMPORTANTE: permite quebras de linha
                                 "height": "70px",
                                 "verticalAlign": "middle",
                             },
-                            style_header={
-                                "fontWeight": "bold",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "textAlign": "center",
-                                "padding": "4px",  # REDUZIDO O PADDING
-                                "fontSize": "11px",  # FONTE MENOR
-                                "height": "30px",  # ALTURA REDUZIDA
-                            },
+                            style_header=table_header_compact_dark_style,
                             style_data_conditional=[
                                 {
                                     "if": {"row_index": 0},
@@ -750,78 +717,42 @@ html.Button(
 
                 # GARANTIA
                 html.Div(
-                    style={
-                        "width": "100%",
-                        "position": "relative",
-                        "zIndex": 1,
-                    },
+                    style={**card_shell_style, "width": "100%", "position": "relative", "zIndex": 1},
                     children=[
                         html.H4(
                             "GARANTIA DE EXECUÇÃO CONTRATUAL",
-                            style={
-                                "textAlign": "center",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "padding": "8px 0",
-                                "margin": "0",
-                                "borderRadius": "4px 4px 0 0",
-                            },
+                            style=section_title_style,
                         ),
                         dash_table.DataTable(
                             id="tabela_extrato_garantia",
                             columns=[{"name": col, "id": col} for col in cols_garantia],
                             data=[],
-                            style_table={
-                                "overflowX": "auto",
-                                "width": "100%",
-                                "border": "1px solid #ddd",
-                                "borderRadius": "0 0 4px 4px",
-                            },
-                            style_cell={
-                                "textAlign": "center",
-                                "padding": "8px",
-                                "fontSize": "12px",
-                                "whiteSpace": "normal",
-                            },
-                            style_header={
-                                "fontWeight": "bold",
-                                "backgroundColor": "#f0f0f0",
-                                "color": "black",
-                                "textAlign": "center",
-                            },
+                            style_table=table_container_style,
+                            style_cell=table_cell_style,
+                            style_header=table_header_light_style,
                         ),
                     ],
                 ),
 
                 # EVOLUÇÃO
                 html.Div(
-                    style={
-                        "width": "100%",
-                        "position": "relative",
-                        "zIndex": 1,
-                    },
+                    style={**card_shell_style, "width": "100%", "position": "relative", "zIndex": 1},
                     children=[
                         html.H4(
                             "EVOLUÇÃO DO CONTRATO",
-                            style={
-                                "textAlign": "center",
-                                "backgroundColor": "#0b2b57",
-                                "color": "white",
-                                "padding": "8px 0",
-                                "margin": "0",
-                                "borderRadius": "4px 4px 0 0",
-                            },
+                            style=section_title_style,
                         ),
                         html.Div(
                             id="valor_original_label",
                             style={
                                 "textAlign": "right",
-                                "padding": "8px",
-                                "backgroundColor": "#fff",
-                                "border": "1px solid #ddd",
+                                "padding": "10px 12px",
+                                "backgroundColor": "#f8fafc",
+                                "border": "1px solid #d9e2ec",
                                 "borderBottom": "none",
-                                "fontSize": "13px",
+                                "fontSize": "12px",
                                 "fontWeight": "bold",
+                                "color": "#334155",
                             },
                         ),
                         dash_table.DataTable(
@@ -834,18 +765,8 @@ html.Button(
                                 {"name": "Valor Atualizado", "id": "Valor Atualizado_fmt"},
                             ],
                             data=[],
-                            style_table={
-                                "overflowX": "auto",
-                                "width": "100%",
-                                "border": "1px solid #ddd",
-                                "borderRadius": "0 0 4px 4px",
-                            },
-                            style_cell={
-                                "textAlign": "center",
-                                "padding": "6px",
-                                "fontSize": "12px",
-                                "whiteSpace": "normal",
-                            },
+                            style_table=table_container_style,
+                            style_cell=table_cell_style,
                             style_cell_conditional=[
                                 {"if": {"column_id": "Alteração"}, "width": "15%"},
                                 {"if": {"column_id": "Tipo"}, "width": "25%"},
@@ -853,12 +774,7 @@ html.Button(
                                 {"if": {"column_id": "Valor_fmt"}, "width": "22.5%"},
                                 {"if": {"column_id": "Valor Atualizado_fmt"}, "width": "22.5%"},
                             ],
-                            style_header={
-                                "fontWeight": "bold",
-                                "backgroundColor": "#f0f0f0",
-                                "color": "black",
-                                "textAlign": "center",
-                            },
+                            style_header=table_header_light_style,
                         ),
                     ],
                 ),

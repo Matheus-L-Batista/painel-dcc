@@ -1,10 +1,9 @@
 import dash
 from dash import html, dcc, dash_table, callback
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output
 from dash.exceptions import PreventUpdate
 import pandas as pd
 from datetime import datetime, timedelta
-from pytz import timezone
 import os
 import threading
 import pickle
@@ -12,7 +11,7 @@ import pickle
 from utils.runtime import format_datetime_sp, get_cache_dir, now_sp
 
 # --------------------------------------------------
-# Registro da página
+# Registro da pagina
 # --------------------------------------------------
 dash.register_page(
     __name__,
@@ -22,7 +21,7 @@ dash.register_page(
 )
 
 # --------------------------------------------------
-# Planilha (aba única por GID) - MAIS CONFIÁVEL
+# Planilha (aba unica por GID)
 # --------------------------------------------------
 SHEET_ID = "1YNg6WRww19Gf79ISjQtb8tkzjX2lscHirnR_F3wGjog"
 GID_CONTROLE = "1976446622"
@@ -32,11 +31,11 @@ URL_CONTROLE_ATAS = (
     f"?format=csv&gid={GID_CONTROLE}"
 )
 
+
 # --------------------------------------------------
 # Carga e tratamento
 # --------------------------------------------------
 def carregar_base_controle() -> pd.DataFrame:
-    # Cabeçalho começa na 2ª linha
     df = pd.read_csv(URL_CONTROLE_ATAS, header=1)
     df.columns = [str(c).strip() for c in df.columns]
     return df
@@ -45,20 +44,14 @@ def carregar_base_controle() -> pd.DataFrame:
 def carregar_atas_vigentes(df_base: pd.DataFrame) -> pd.DataFrame:
     df = df_base.copy()
 
-    # A:E => índices 0..4 (5 colunas)
     if df.shape[1] < 5:
-        return pd.DataFrame(columns=["Número", "Ata Vigente", "Data Inicial", "Data de Término", "Link_markdown"])
+        return pd.DataFrame(columns=["Numero", "Ata Vigente", "Data Inicial", "Data de Termino", "Link_markdown"])
 
     df = df.iloc[:, 0:5].copy()
     df.columns = [str(c).strip() for c in df.columns]
-
-    # Padroniza nome
     df = df.rename(columns={"ATAS VIGENTES": "Ata Vigente"})
-
-    # Remove colunas Unnamed (caso existam dentro do recorte)
     df = df[[c for c in df.columns if not str(c).startswith("Unnamed")]]
 
-    # Filtra somente vigentes
     if "Data de Término" in df.columns:
         df["Data de Término_dt"] = pd.to_datetime(df["Data de Término"], dayfirst=True, errors="coerce")
         hoje = datetime.now().date()
@@ -66,10 +59,9 @@ def carregar_atas_vigentes(df_base: pd.DataFrame) -> pd.DataFrame:
         df = df[df["Data de Término_dt"].dt.date >= hoje]
         df["Data de Término"] = df["Data de Término_dt"].dt.strftime("%d/%m/%Y")
 
-    # Link em markdown (valida URL)
     def formatar_link(url) -> str:
         url = str(url).strip()
-        return f"[link]({url})" if url.startswith("http") else ""
+        return f"[Abrir]({url})" if url.startswith("http") else ""
 
     if "Link" in df.columns:
         df["Link_markdown"] = df["Link"].apply(formatar_link)
@@ -83,17 +75,12 @@ def carregar_atas_vigentes(df_base: pd.DataFrame) -> pd.DataFrame:
 def carregar_atas_andamento(df_base: pd.DataFrame) -> pd.DataFrame:
     df = df_base.copy()
 
-    # G:I => índices 6..8 (9ª coluna é índice 8)
     if df.shape[1] < 9:
         return pd.DataFrame(columns=["Atas em Andamento", "Situação", "Previsão para estar disponível"])
 
     df = df.iloc[:, 6:9].copy()
     df.columns = [str(c).strip() for c in df.columns]
-
-    # Remove Unnamed do recorte
     df = df[[c for c in df.columns if not str(c).startswith("Unnamed")]]
-
-    # Padroniza nomes
     df = df.rename(
         columns={
             "ATAS EM ANDAMENTO": "Atas em Andamento",
@@ -107,16 +94,14 @@ def carregar_atas_andamento(df_base: pd.DataFrame) -> pd.DataFrame:
 
 
 # --------------------------------------------------
-# Cache (memória + disco) + atualização automática
+# Cache
 # --------------------------------------------------
-CACHE_TTL_MINUTOS = 60  # 1h
+CACHE_TTL_MINUTOS = 60
 _CACHE_LOCK = threading.Lock()
-_CACHE_OBJ = None          # dict: {"vig": df, "and": df}
+_CACHE_OBJ = None
 _CACHE_AT = None
 
-_CACHE_DIR = os.path.join(
-    str(get_cache_dir("atas")),
-)
+_CACHE_DIR = os.path.join(str(get_cache_dir("atas")))
 os.makedirs(_CACHE_DIR, exist_ok=True)
 _CACHE_FILE = os.path.join(_CACHE_DIR, "atas_cache.pkl")
 _CACHE_META = os.path.join(_CACHE_DIR, "meta.pkl")
@@ -159,10 +144,6 @@ def _save_disk_cache(obj, cached_at: datetime):
 
 
 def get_atas_cache(force: bool = False):
-    """
-    Retorna (cache_obj, status_msg).
-    cache_obj: {"vig": df_atas_vigentes, "and": df_atas_andamento}
-    """
     global _CACHE_OBJ, _CACHE_AT
 
     now_naive = datetime.now()
@@ -197,7 +178,7 @@ def get_atas_cache(force: bool = False):
                 _save_disk_cache(_CACHE_OBJ, now2)
                 return _CACHE_OBJ, f"Dados recarregados da planilha ({_fmt_dt(_now_sp())})."
 
-    return _CACHE_OBJ, f"Dados em cache (memória) — verificado em {_fmt_dt(_now_sp())}."
+    return _CACHE_OBJ, f"Dados em cache (memória) - verificado em {_fmt_dt(_now_sp())}."
 
 
 # --------------------------------------------------
@@ -210,28 +191,64 @@ header_style = {
     "position": "sticky",
     "top": 0,
     "zIndex": 1,
+    "padding": "12px 10px",
+    "fontSize": "12px",
+    "border": "none",
+}
+
+header_style_andamento = {
+    **header_style,
+    "backgroundColor": "#b3261e",
 }
 
 cell_style = {
     "textAlign": "center",
-    "padding": "6px",
+    "padding": "10px 12px",
     "fontSize": "12px",
     "whiteSpace": "normal",
     "height": "auto",
+    "lineHeight": "1.35",
+    "border": "1px solid #e4e8ef",
 }
 
-zebra_style = [{"if": {"row_index": "odd"}, "backgroundColor": "#f5f5f5"}]
-datatable_links_css = [{"selector": "p", "rule": "margin: 0; text-align: center;"}]
+zebra_style = [
+    {"if": {"row_index": "odd"}, "backgroundColor": "#f8fafc"},
+    {"if": {"state": "active"}, "backgroundColor": "#eef4ff", "border": "1px solid #9bb8ea"},
+]
+
+datatable_links_css = [
+    {"selector": "p", "rule": "margin: 0; text-align: center;"},
+    {
+        "selector": "td a",
+        "rule": "display:inline-block; padding:4px 10px; border-radius:999px; background:#eaf2ff; color:#0b2b57; font-weight:600; text-decoration:none;",
+    },
+]
 
 botao_style = {
     "backgroundColor": "#0b2b57",
     "color": "white",
-    "padding": "8px 16px",
+    "padding": "10px 18px",
     "border": "none",
-    "borderRadius": "4px",
+    "borderRadius": "10px",
     "cursor": "pointer",
     "fontSize": "12px",
     "fontWeight": "bold",
+    "boxShadow": "0 4px 12px rgba(11, 43, 87, 0.18)",
+}
+
+card_style = {
+    "backgroundColor": "white",
+    "border": "1px solid #e6ebf2",
+    "borderRadius": "14px",
+    "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
+    "padding": "16px",
+}
+
+section_title_style = {
+    "textAlign": "center",
+    "margin": "0 0 14px 0",
+    "color": "#0b2b57",
+    "fontWeight": "700",
 }
 
 
@@ -239,63 +256,115 @@ botao_style = {
 # Layout
 # --------------------------------------------------
 layout = html.Div(
-    style={"padding": "10px"},
+    style={"padding": "14px", "backgroundColor": "#f6f8fb", "minHeight": "100vh"},
     children=[
         dcc.Location(id="url"),
         dcc.Store(id="store-reload-atas"),
-        dcc.Interval(id="interval-reload-atas", interval=60 * 60 * 1000, n_intervals=0),  # 1h
-
+        dcc.Interval(id="interval-reload-atas", interval=60 * 60 * 1000, n_intervals=0),
         html.Div(
             style={
                 "display": "flex",
                 "alignItems": "center",
-                "justifyContent": "center",
-                "gap": "10px",
+                "justifyContent": "space-between",
+                "gap": "14px",
                 "flexWrap": "wrap",
-                "marginBottom": "10px",
+                "marginBottom": "14px",
+                "padding": "14px 16px",
+                "backgroundColor": "white",
+                "border": "1px solid #e6ebf2",
+                "borderRadius": "14px",
+                "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
             },
             children=[
-                html.Button("Atualizar Dados", id="btn_reload_atas", n_clicks=0, style=botao_style),
-                html.Div(id="info-atualizacao-atas", style={"fontSize": "12px", "color": "#333"}),
+                html.Div(
+                    children=[
+                        html.Div("Controle de Atas", style={"fontSize": "20px", "fontWeight": "700", "color": "#0b2b57"}),
+                        html.Div("Acompanhamento das atas vigentes e em andamento", style={"fontSize": "12px", "color": "#5f6b7a"}),
+                    ]
+                ),
+                html.Div(
+                    style={"display": "flex", "alignItems": "center", "gap": "12px", "flexWrap": "wrap"},
+                    children=[
+                        html.Button("Atualizar Dados", id="btn_reload_atas", n_clicks=0, style=botao_style),
+                        html.Div(
+                            id="info-atualizacao-atas",
+                            style={
+                                "fontSize": "12px",
+                                "color": "#334155",
+                                "backgroundColor": "#f8fafc",
+                                "border": "1px solid #e6ebf2",
+                                "borderRadius": "999px",
+                                "padding": "8px 12px",
+                            },
+                        ),
+                    ],
+                ),
             ],
         ),
-
-        # Mostra erro de carregamento na tela (sem esconder)
-        html.Div(id="atas_erro", style={"color": "crimson", "textAlign": "center", "marginBottom": "8px"}),
-
-        html.H3("Atas Vigentes", style={"textAlign": "center"}),
-
-        dash_table.DataTable(
-            id="tabela_atas_vigentes",
-            columns=[
-                {"name": "Número", "id": "Número"},
-                {"name": "Ata Vigente", "id": "Ata Vigente"},
-                {"name": "Data Inicial", "id": "Data Inicial"},
-                {"name": "Data de Término", "id": "Data de Término"},
-                {"name": "Link", "id": "Link_markdown", "presentation": "markdown"},
+        html.Div(id="atas_erro", style={"color": "crimson", "textAlign": "center", "marginBottom": "10px"}),
+        html.Div(
+            style={**card_style, "marginBottom": "18px"},
+            children=[
+                html.H3("Atas Vigentes", style=section_title_style),
+                dash_table.DataTable(
+                    id="tabela_atas_vigentes",
+                    columns=[
+                        {"name": "Número", "id": "Número"},
+                        {"name": "Ata Vigente", "id": "Ata Vigente"},
+                        {"name": "Data Inicial", "id": "Data Inicial"},
+                        {"name": "Data de Término", "id": "Data de Término"},
+                        {"name": "Link", "id": "Link_markdown", "presentation": "markdown"},
+                    ],
+                    data=[],
+                    style_table={
+                        "maxHeight": "500px",
+                        "overflowY": "auto",
+                        "overflowX": "auto",
+                        "borderRadius": "10px",
+                        "overflow": "hidden",
+                    },
+                    style_cell=cell_style,
+                    style_header=header_style,
+                    style_data_conditional=zebra_style,
+                    style_cell_conditional=[
+                        {"if": {"column_id": "Número"}, "width": "140px", "minWidth": "140px", "maxWidth": "140px"},
+                        {"if": {"column_id": "Ata Vigente"}, "textAlign": "left"},
+                        {"if": {"column_id": "Data Inicial"}, "width": "165px", "minWidth": "165px", "maxWidth": "165px"},
+                        {"if": {"column_id": "Data de Término"}, "width": "165px", "minWidth": "165px", "maxWidth": "165px"},
+                        {"if": {"column_id": "Link_markdown"}, "width": "90px", "minWidth": "90px", "maxWidth": "90px"},
+                    ],
+                    css=datatable_links_css,
+                ),
             ],
-            data=[],
-            style_table={"maxHeight": "450px", "overflowY": "auto", "overflowX": "auto"},
-            style_cell=cell_style,
-            style_header=header_style,
-            style_data_conditional=zebra_style,
-            css=datatable_links_css,
         ),
-
-        html.H3("Atas em Andamento", style={"marginTop": "20px", "textAlign": "center"}),
-
-        dash_table.DataTable(
-            id="tabela_atas_andamento",
-            columns=[
-                {"name": "Atas em Andamento", "id": "Atas em Andamento"},
-                {"name": "Situação", "id": "Situação"},
-                {"name": "Previsão para estar disponível", "id": "Previsão para estar disponível"},
+        html.Div(
+            style=card_style,
+            children=[
+                html.H3("Atas em Andamento", style=section_title_style),
+                dash_table.DataTable(
+                    id="tabela_atas_andamento",
+                    columns=[
+                        {"name": "Atas em Andamento", "id": "Atas em Andamento"},
+                        {"name": "Situação", "id": "Situação"},
+                        {"name": "Previsão para estar disponível", "id": "Previsão para estar disponível"},
+                    ],
+                    data=[],
+                    style_table={
+                        "maxHeight": "260px",
+                        "overflowY": "auto",
+                        "overflowX": "auto",
+                        "borderRadius": "10px",
+                        "overflow": "hidden",
+                    },
+                    style_cell=cell_style,
+                    style_header=header_style_andamento,
+                    style_data_conditional=zebra_style,
+                    style_cell_conditional=[
+                        {"if": {"column_id": "Atas em Andamento"}, "textAlign": "left"},
+                        {"if": {"column_id": "Previsão para estar disponível"}, "width": "240px", "minWidth": "240px", "maxWidth": "240px"},
+                    ],
+                ),
             ],
-            data=[],
-            style_table={"maxHeight": "220px", "overflowY": "auto", "overflowX": "auto"},
-            style_cell=cell_style,
-            style_header=header_style,
-            style_data_conditional=zebra_style,
         ),
     ],
 )

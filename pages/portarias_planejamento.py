@@ -299,15 +299,33 @@ botao_pdf_style = {
     "marginRight": "6px",
 }
 
+page_style = {"padding": "14px", "backgroundColor": "#f6f8fb", "minHeight": "100vh"}
+card_shell_style = {
+    "backgroundColor": "white",
+    "border": "1px solid #e6ebf2",
+    "borderRadius": "14px",
+    "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
+}
+
+datatable_links_css = [
+    {"selector": "p", "rule": "margin: 0; text-align: center;"},
+    {
+        "selector": "td a",
+        "rule": "display:inline-block; padding:4px 10px; border-radius:999px; background:#eaf2ff; color:#0b2b57; font-weight:600; text-decoration:none;",
+    },
+]
+
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
 layout = html.Div(
+    style=page_style,
     children=[
         dcc.Location(id="url"),
         html.Div(
             id="barra_filtros_port_planej",
             className="filtros-sticky",
+            style={**card_shell_style, "padding": "14px 16px", "marginBottom": "14px"},
             children=[
                 html.Div(
                     style={
@@ -398,7 +416,14 @@ layout = html.Div(
                         dcc.Download(id="download_relatorio_port_planej"),
                         html.Div(
                             id="info-atualizacao-port-planej",
-                            style={"fontSize": "12px", "color": "#333"},
+                            style={
+                                "fontSize": "12px",
+                                "color": "#334155",
+                                "backgroundColor": "#f8fafc",
+                                "border": "1px solid #e6ebf2",
+                                "borderRadius": "999px",
+                                "padding": "8px 12px",
+                            },
                         ),
                     ],
                 ),
@@ -422,7 +447,10 @@ layout = html.Div(
             ],
         ),
         # Tabela
-        dash_table.DataTable(
+        html.Div(
+            style={**card_shell_style, "padding": "16px"},
+            children=[
+                dash_table.DataTable(
             id="tabela_portarias_planej",
             columns=[
                 {"name": "Data", "id": "Data"},
@@ -444,11 +472,13 @@ layout = html.Div(
             },
             style_cell={
                 "textAlign": "center",
-                "padding": "6px",
+                "padding": "10px 8px",
                 "fontSize": "12px",
                 "minWidth": "80px",
                 "maxWidth": "260px",
                 "whiteSpace": "normal",
+                "lineHeight": "1.35",
+                "border": "1px solid #e4e8ef",
             },
             style_header={
                 "fontWeight": "bold",
@@ -469,7 +499,9 @@ layout = html.Div(
             sort_action="custom",
             sort_mode="single",
             sort_by=[],
-            css=[dict(selector="p", rule="margin: 0; text-align: center;")],
+            css=datatable_links_css,
+        ),
+            ],
         ),
         dcc.Store(id="store-reload-port-planej"),
         dcc.Interval(id="interval-reload-port-planej", interval=60 * 60 * 1000, n_intervals=0),  # 1h
@@ -574,7 +606,7 @@ def atualizar_tabela_portarias_planej(_reload, numero_ano_texto, setor_drop, ser
 
     def formatar_link(url):
         if isinstance(url, str) and url.strip():
-            return f"[Link]({url.strip()})"
+            return f"[Abrir]({url.strip()})"
         return ""
 
     dff_display["Link_markdown"] = dff_display[NOME_COL_LINK_ORIGINAL].apply(formatar_link)

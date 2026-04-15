@@ -94,6 +94,19 @@ botao_pdf_style = {
     "backgroundColor": "#d93025",
 }
 
+page_style = {
+    "padding": "14px",
+    "backgroundColor": "#f6f8fb",
+    "minHeight": "100vh",
+}
+
+card_shell_style = {
+    "backgroundColor": "white",
+    "border": "1px solid #e6ebf2",
+    "borderRadius": "14px",
+    "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
+}
+
 
 def formatar_moeda(v):
     """
@@ -149,6 +162,7 @@ def aplicar_filtros_processos(
 # Layout
 # --------------------------------------------------
 layout = html.Div(
+    style=page_style,
     children=[
         dcc.Location(id="url"),
         dcc.Store(id="store-reload-proc"),
@@ -157,6 +171,7 @@ layout = html.Div(
         html.Div(
             id="barra_filtros_proc",
             className="filtros-sticky",
+            style={**card_shell_style, "padding": "14px 16px"},
             children=[
                 # Linha 1
                 html.Div(
@@ -356,7 +371,15 @@ layout = html.Div(
                             children=[
                                 html.Div(
                                     id="info-atualizacao-proc",
-                                    style={"fontSize": "12px", "color": "#333", "textAlign": "right"},
+                                    style={
+                                        "fontSize": "12px",
+                                        "color": "#334155",
+                                        "textAlign": "right",
+                                        "backgroundColor": "#f8fafc",
+                                        "border": "1px solid #e6ebf2",
+                                        "borderRadius": "999px",
+                                        "padding": "8px 12px",
+                                    },
                                 ),
                                 html.Div(
                                     style={
@@ -403,8 +426,8 @@ layout = html.Div(
                         "display": "flex",
                         "flexWrap": "wrap",
                         "gap": "10px",
-                        "marginBottom": "15px",
-                        "marginTop": "10px",
+                        "marginBottom": "18px",
+                        "marginTop": "14px",
                     },
                 ),
                 html.Div(
@@ -415,25 +438,37 @@ layout = html.Div(
                         "marginBottom": "15px",
                     },
                     children=[
-                        dcc.Graph(
-                            id="grafico_status_proc",
+                        html.Div(
                             style={
+                                **card_shell_style,
                                 "flex": "1 1 320px",
                                 "minWidth": "300px",
-                                "height": "320px",
+                                "padding": "10px",
                             },
+                            children=[
+                                dcc.Graph(
+                                    id="grafico_status_proc",
+                                    style={"height": "320px"},
+                                ),
+                            ],
                         ),
-                        dcc.Graph(
-                            id="grafico_valor_mes_proc",
+                        html.Div(
                             style={
+                                **card_shell_style,
                                 "flex": "2 1 420px",
                                 "minWidth": "340px",
-                                "height": "320px",
+                                "padding": "10px",
                             },
+                            children=[
+                                dcc.Graph(
+                                    id="grafico_valor_mes_proc",
+                                    style={"height": "320px"},
+                                ),
+                            ],
                         ),
                     ],
                 ),
-                html.H4("Tabela de Processos de Compras"),
+                html.H4("Tabela de Processos de Compras", style={"margin": "0 0 14px 0", "textAlign": "center", "color": "#0b2b57"}),
                 dash_table.DataTable(
                     id="tabela_proc",
                     columns=[
@@ -481,11 +516,13 @@ layout = html.Div(
                     },
                     style_cell={
                         "textAlign": "center",
-                        "padding": "6px",
+                        "padding": "10px 8px",
                         "fontSize": "12px",
                         "minWidth": "80px",
                         "maxWidth": "220px",
                         "whiteSpace": "normal",
+                        "lineHeight": "1.35",
+                        "border": "1px solid #e4e8ef",
                     },
                     style_header={
                         "fontWeight": "bold",
@@ -495,19 +532,20 @@ layout = html.Div(
                         "position": "sticky",
                         "top": 0,
                         "zIndex": 10,
+                        "padding": "12px 8px",
                     },
                     style_data_conditional=[
                         {
                             "if": {
                                 "filter_query": '{Status} = "Em Andamento"'
                             },
-                            "backgroundColor": "#e6e6e6",
+                            "backgroundColor": "#eef2f7",
                         },
                         {
                             "if": {
                                 "filter_query": '{Status} = "Não Concluído"'
                             },
-                            "backgroundColor": "#ffe0e0",
+                            "backgroundColor": "#fff1f1",
                         },
                     ],
                 ),
@@ -654,11 +692,16 @@ def atualizar_tabela_proc(
     nao_concluidos = (dff["Status"] == "Não Concluído").sum()
 
     card_style = {
-        "flex": "1 1 220px",
+        "flex": "1 1 180px",
         "backgroundColor": "#ffffff",
         "padding": "14px",
         "textAlign": "center",
         "minHeight": "20px",
+        "minWidth": "170px",
+        "maxWidth": "220px",
+        "border": "1px solid #e6ebf2",
+        "borderRadius": "14px",
+        "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
     }
 
     cards = [
@@ -703,7 +746,7 @@ def atualizar_tabela_proc(
                     qtd_processos,
                     style={"margin": "0", "fontSize": "20px"},
                 ),
-                html.Div("Número de Processos", style={"fontSize": "15px"}),
+                html.Div("Número de Processos", style={"fontSize": "13px"}),
             ],
         ),
         html.Div(
@@ -714,7 +757,7 @@ def atualizar_tabela_proc(
                     concluidos,
                     style={"margin": "0", "fontSize": "20px"},
                 ),
-                html.Div("Processos Concluídos", style={"fontSize": "15px"}),
+                html.Div("Processos Concluídos", style={"fontSize": "13px"}),
             ],
         ),
         html.Div(
@@ -726,7 +769,7 @@ def atualizar_tabela_proc(
                     style={"margin": "0", "fontSize": "20px"},
                 ),
                 html.Div(
-                    "Processos Em Andamento", style={"fontSize": "15px"}
+                    "Processos Em Andamento", style={"fontSize": "13px"}
                 ),
             ],
         ),
@@ -739,7 +782,7 @@ def atualizar_tabela_proc(
                     style={"margin": "0", "fontSize": "20px"},
                 ),
                 html.Div(
-                    "Processos Não Concluídos", style={"fontSize": "15px"}
+                    "Processos Não Concluídos", style={"fontSize": "13px"}
                 ),
             ],
         ),

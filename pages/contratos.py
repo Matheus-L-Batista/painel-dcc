@@ -330,16 +330,26 @@ botao_limpar_style = {**botao_base_style, "backgroundColor": "#9aa0a6"}
 botao_atualizar_style = {**botao_base_style, "backgroundColor": "#0b2b57"}
 botao_pdf_style = {**botao_base_style, "backgroundColor": "#e23323"}
 
+page_style = {"padding": "14px", "backgroundColor": "#f6f8fb", "minHeight": "100vh"}
+card_shell_style = {
+    "backgroundColor": "white",
+    "border": "1px solid #e6ebf2",
+    "borderRadius": "14px",
+    "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
+}
+
 
 # --------------------------------------------------
 # Layout
 # --------------------------------------------------
 layout = html.Div(
+    style=page_style,
     children=[
         dcc.Location(id="url"),
         html.Div(
             id="barra_filtros_contratos",
             className="filtros-sticky",
+            style={**card_shell_style, "padding": "14px 16px", "marginBottom": "14px"},
             children=[
                 html.Div(
                     style={
@@ -477,7 +487,14 @@ layout = html.Div(
                                 dcc.Download(id="download_relatorio_contratos"),
                                 html.Div(
                                     id="info-atualizacao-contratos",
-                                    style={"fontSize": "12px", "color": "#333"},
+                                    style={
+                                        "fontSize": "12px",
+                                        "color": "#334155",
+                                        "backgroundColor": "#f8fafc",
+                                        "border": "1px solid #e6ebf2",
+                                        "borderRadius": "999px",
+                                        "padding": "8px 12px",
+                                    },
                                 ),
                             ],
                         ),
@@ -485,7 +502,10 @@ layout = html.Div(
                 ),
             ],
         ),
-        dash_table.DataTable(
+        html.Div(
+            style={**card_shell_style, "padding": "16px"},
+            children=[
+                dash_table.DataTable(
             id="tabela_contratos",
             columns=[
                 {"name": "Nº do Contrato e Link", "id": "Contrato_Link", "type": "text", "presentation": "markdown"},
@@ -510,11 +530,13 @@ layout = html.Div(
             },
             style_cell={
                 "textAlign": "center",
-                "padding": "6px",
+                "padding": "10px 8px",
                 "fontSize": "12px",
                 "minWidth": "80px",
                 "maxWidth": "260px",
                 "whiteSpace": "normal",
+                "lineHeight": "1.35",
+                "border": "1px solid #e4e8ef",
             },
             style_header={
                 "fontWeight": "bold",
@@ -524,6 +546,7 @@ layout = html.Div(
                 "position": "sticky",
                 "top": 0,
                 "zIndex": 5,
+                "padding": "12px 8px",
             },
             style_cell_conditional=[
                 {"if": {"column_id": "Contrato_Link"}, "textAlign": "center"},
@@ -543,6 +566,8 @@ layout = html.Div(
                 },
             ],
             css=[dict(selector="p", rule="margin: 0; text-align: center;")],
+        ),
+            ],
         ),
         dcc.Store(id="store_dados_contratos"),
         dcc.Store(id="store-reload-contratos"),

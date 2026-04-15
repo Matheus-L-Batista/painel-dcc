@@ -67,6 +67,19 @@ button_limpar_style = {**button_base_style, "backgroundColor": "#9aa0a6", "color
 button_atualizar_style = {**button_base_style, "backgroundColor": "#0b2b57"}
 button_pdf_style = {**button_base_style, "backgroundColor": "#d93025"}
 
+page_style = {
+    "padding": "14px",
+    "backgroundColor": "#f6f8fb",
+    "minHeight": "100vh",
+}
+
+card_shell_style = {
+    "backgroundColor": "white",
+    "border": "1px solid #e6ebf2",
+    "borderRadius": "14px",
+    "boxShadow": "0 2px 12px rgba(11, 43, 87, 0.06)",
+}
+
 
 def conv_moeda_br(v):
     if isinstance(v, str):
@@ -392,6 +405,7 @@ def _aplicar_filtro_saldo(df_plan: pd.DataFrame, filtro_saldo: str):
 # Layout
 # --------------------------------------------------
 layout = html.Div(
+    style=page_style,
     children=[
         dcc.Location(id="url"),
         # Barra de filtros (sobrepõe as tabelas)
@@ -399,9 +413,10 @@ layout = html.Div(
             id="barra_filtros_pca",
             className="filtros-sticky",
             style={
+                **card_shell_style,
                 "position": "relative",
                 "zIndex": 1100,
-                "backgroundColor": "white",
+                "padding": "14px 16px",
             },
             children=[
                 html.Div(
@@ -538,7 +553,16 @@ layout = html.Div(
                                 dcc.Download(id="download_relatorio_pca"),
                                 html.Div(
                                     id="info-atualizacao-pca",
-                                    style={"fontSize": "12px", "color": "#333", "marginTop": "6px"},
+                                    style={
+                                        "fontSize": "12px",
+                                        "color": "#334155",
+                                        "marginTop": "8px",
+                                        "backgroundColor": "#f8fafc",
+                                        "border": "1px solid #e6ebf2",
+                                        "borderRadius": "999px",
+                                        "padding": "8px 12px",
+                                        "display": "inline-block",
+                                    },
                                 ),
                             ],
                         ),
@@ -587,19 +611,21 @@ layout = html.Div(
                 "display": "flex",
                 "flexWrap": "wrap",
                 "gap": "10px",
-                "marginTop": "10px",
+                "marginTop": "38px",
             },
             children=[
                 # Planejamento
                 html.Div(
                     style={
+                        **card_shell_style,
                         "flex": "1 1 50%",
                         "minWidth": "300px",
                         "position": "relative",
                         "zIndex": 1,
+                        "padding": "16px",
                     },
                     children=[
-                        html.H4("Planejamento (PCA)"),
+                        html.H4("Planejamento (PCA)", style={"margin": "0 0 12px 0", "textAlign": "center"}),
                         dash_table.DataTable(
                             id="tabela_pca_planejamento",
                             columns=[
@@ -629,7 +655,8 @@ layout = html.Div(
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
-                                "maxHeight": "420px",
+                                "maxHeight": "260px",
+                                "minHeight": "260px",
                                 "width": "100%",
                                 "tableLayout": "fixed",
                                 "position": "relative",
@@ -637,9 +664,14 @@ layout = html.Div(
                             },
                             style_cell={
                                 "textAlign": "center",
-                                "padding": "6px",
+                                "padding": "10px 6px",
                                 "fontSize": "12px",
                                 "whiteSpace": "normal",
+                                "lineHeight": "1.35",
+                            },
+                            style_data={
+                                "height": "auto",
+                                "minHeight": "44px",
                             },
                             style_cell_conditional=[
                                 {"if": {"column_id": "DFD"}, "width": "80px", "minWidth": "80px", "maxWidth": "80px"},
@@ -657,6 +689,9 @@ layout = html.Div(
                                 "fontWeight": "bold",
                                 "backgroundColor": "#0b2b57",
                                 "color": "white",
+                                "padding": "10px 6px",
+                                "lineHeight": "1.2",
+                                "height": "auto",
                             },
                             style_data_conditional=[
                                 {"if": {"filter_query": "{Saldo_num} <= 0"}, "backgroundColor": "#ffcccc"},
@@ -670,17 +705,17 @@ layout = html.Div(
                 ),
                 html.Div(
                     style={
+                        **card_shell_style,
                         "width": "100%",
-                        "border": "1px solid #9e9e9e",
-                        "padding": "10px 12px",
-                        "backgroundColor": "white",
+                        "padding": "8px 12px",
                         "fontSize": "12px",
                         "lineHeight": "1.35",
                         "color": "#333333",
                     },
                     children=[
                         html.Div(
-                            [
+                            style={"marginBottom": "4px"},
+                            children=[
                                 "Os processos listados abaixo podem ser consultados na área pública do SIPAC. Link de acesso: ",
                                 html.A(
                                     "https://sipac.unifei.edu.br/public/jsp/portal.jsf",
@@ -693,7 +728,7 @@ layout = html.Div(
                             ]
                         ),
                         html.Div(
-                            style={"display": "flex", "justifyContent": "center", "gap": "6px", "margin": "10px 0"},
+                            style={"display": "flex", "justifyContent": "center", "gap": "6px", "margin": "4px 0"},
                             children=[
                                 html.Div("23088", style={"border": "1px solid #777", "padding": "4px 6px", "fontWeight": "bold", "backgroundColor": "#f4f4f4"}),
                                 html.Div("099999", style={"border": "1px solid #777", "padding": "4px 6px", "fontWeight": "bold", "backgroundColor": "#f4f4f4"}),
@@ -702,7 +737,8 @@ layout = html.Div(
                             ],
                         ),
                         html.Div(
-                            [
+                            style={"marginTop": "2px"},
+                            children=[
                                 "Em seguida, clicar na lupa à direita ",
                                 html.Span("🔍", style={"fontSize": "16px"}),
                                 " para ter acesso ao conteúdo do processo que esteja classificado como OSTENSIVO.",
@@ -713,13 +749,15 @@ layout = html.Div(
                 # Processos vinculados
                 html.Div(
                     style={
+                        **card_shell_style,
                         "flex": "1 1 50%",
                         "minWidth": "300px",
                         "position": "relative",
                         "zIndex": 1,
+                        "padding": "16px",
                     },
                     children=[
-                        html.H4("Processos vinculados ao PCA"),
+                        html.H4("Processos vinculados ao PCA", style={"margin": "0 0 12px 0", "textAlign": "center"}),
                         dash_table.DataTable(
                             id="tabela_pca_processos",
                             columns=[
@@ -743,7 +781,8 @@ layout = html.Div(
                             style_table={
                                 "overflowX": "auto",
                                 "overflowY": "auto",
-                                "maxHeight": "420px",
+                                "maxHeight": "260px",
+                                "minHeight": "260px",
                                 "width": "100%",
                                 "tableLayout": "fixed",
                                 "position": "relative",
@@ -751,24 +790,32 @@ layout = html.Div(
                             },
                             style_cell={
                                 "textAlign": "center",
-                                "padding": "6px",
+                                "padding": "10px 6px",
                                 "fontSize": "12px",
                                 "whiteSpace": "normal",
+                                "lineHeight": "1.35",
+                            },
+                            style_data={
+                                "height": "auto",
+                                "minHeight": "44px",
                             },
                             style_cell_conditional=[
-                                {"if": {"column_id": "DFD"}, "width": "90px", "minWidth": "90px", "maxWidth": "90px"},
+                                {"if": {"column_id": "DFD"}, "width": "88px", "minWidth": "88px", "maxWidth": "88px"},
                                 {"if": {"column_id": "Área requisitante"}, "width": "155px", "minWidth": "155px", "maxWidth": "155px"},
                                 {"if": {"column_id": "Material ou Serviço"}, "width": "155px", "minWidth": "155px", "maxWidth": "155px"},
                                 {"if": {"column_id": "Item"}, "width": "70px", "minWidth": "70px", "maxWidth": "70px"},
-                                {"if": {"column_id": "Processo"}, "width": "205px", "minWidth": "205px", "maxWidth": "205px"},
+                                {"if": {"column_id": "Processo"}, "width": "165px", "minWidth": "165px", "maxWidth": "165px"},
                                 {"if": {"column_id": "Objeto"}, "width": "365px", "minWidth": "365px", "maxWidth": "365px", "textAlign": "left"},
                                 {"if": {"column_id": "Observações"}, "width": "310px", "minWidth": "310px", "maxWidth": "310px", "textAlign": "left"},
-                                {"if": {"column_id": "Valor_fmt"}, "width": "135px", "minWidth": "135px", "maxWidth": "135px"},
+                                {"if": {"column_id": "Valor_fmt"}, "width": "120px", "minWidth": "120px", "maxWidth": "120px"},
                             ],
                             style_header={
                                 "fontWeight": "bold",
                                 "backgroundColor": "#0b2b57",
                                 "color": "white",
+                                "padding": "10px 6px",
+                                "lineHeight": "1.2",
+                                "height": "auto",
                             },
                         ),
                     ],
@@ -1029,6 +1076,76 @@ def atualizar_tabelas_pca(_reload, ano, classe_texto, dfd_texto, area, tipo, fil
 
 
 @dash.callback(
+    Output("filtro_ano_pca", "options", allow_duplicate=True),
+    Output("filtro_tipo_pca", "options", allow_duplicate=True),
+    Output("filtro_area_pca", "options", allow_duplicate=True),
+    Input("store-reload-pca", "data"),
+    Input("filtro_ano_pca", "value"),
+    Input("filtro_classe_texto_pca", "value"),
+    Input("filtro_dfd_texto_pca", "value"),
+    Input("filtro_area_pca", "value"),
+    Input("filtro_tipo_pca", "value"),
+    Input("filtro_saldo_pca", "value"),
+    prevent_initial_call=True,
+)
+def atualizar_opcoes_filtros_pca(_reload, ano, classe_texto, dfd_texto, area, tipo, filtro_saldo):
+    cache, _ = get_pca_cache(force=False)
+    if not cache:
+        return [], [], []
+
+    dff = cache["plan"].copy()
+    if dff.empty:
+        return [], [], []
+
+    dff = dff[dff["DFD"] != "*"]
+
+    if ano:
+        dff = dff[dff["Ano"] == str(ano)]
+
+    if classe_texto and str(classe_texto).strip():
+        termo = str(classe_texto).strip().lower()
+        if "Nome Classe/Grupo" in dff.columns:
+            dff = dff[
+                dff["Nome Classe/Grupo"]
+                .astype(str)
+                .str.lower()
+                .str.contains(termo, na=False)
+            ]
+
+    if dfd_texto and str(dfd_texto).strip():
+        termo = str(dfd_texto).strip().lower()
+        dff = dff[
+            dff["DFD"]
+            .astype(str)
+            .str.lower()
+            .str.contains(termo, na=False)
+        ]
+
+    if area:
+        dff = dff[dff["Área requisitante"] == area]
+
+    if tipo:
+        dff = dff[dff["Material ou Serviço"] == tipo]
+
+    dff = _aplicar_filtro_saldo(dff, filtro_saldo)
+
+    anos = []
+    if "Ano" in dff.columns:
+        anos_validos = []
+        for valor in dff["Ano"].dropna().astype(str).unique().tolist():
+            try:
+                anos_validos.append(int(float(str(valor).strip())))
+            except Exception:
+                continue
+        anos = [{"label": str(a), "value": str(a)} for a in sorted(set(anos_validos))]
+
+    tipos = _opcoes_unicas(dff, "Material ou Serviço")
+    areas = _opcoes_unicas(dff, "Área requisitante")
+
+    return anos, tipos, areas
+
+
+@dash.callback(
     Output("filtro_ano_pca", "value"),
     Output("filtro_classe_texto_pca", "value"),
     Output("filtro_dfd_texto_pca", "value"),
@@ -1069,6 +1186,93 @@ def simple_pdf(text):
     return Paragraph(str(text), simple_style_pca)
 
 
+def wrap_pdf_center(text):
+    return Paragraph(
+        str(text),
+        ParagraphStyle(
+            "wrap_pca_pdf_center",
+            parent=wrap_style_pca,
+            alignment=TA_CENTER,
+        ),
+    )
+
+
+def adicionar_orientacoes_sipac_pdf(story, largura_util):
+    link_sipac = "https://sipac.unifei.edu.br/public/jsp/portal.jsf"
+    caixa_largura = [largura_util]
+    exemplo_larguras = [0.7 * inch, 0.9 * inch, 0.6 * inch, 0.45 * inch]
+
+    estilo_texto = ParagraphStyle(
+        "orientacao_sipac_pdf",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#333333"),
+    )
+    estilo_link = ParagraphStyle(
+        "orientacao_sipac_link_pdf",
+        parent=estilo_texto,
+    )
+    texto_superior = Paragraph(
+        (
+            "Os processos listados abaixo podem ser consultados na área pública do SIPAC. "
+            f"Link de acesso: <link href='{link_sipac}' color='blue'><u>{link_sipac}</u></link><br/>"
+            "Clicar em CONSULTAS &gt;&gt; PROCESSOS. Em seguida, informar o número do processo "
+            "desejado, obedecendo à máscara da tela. Exemplo para o processo 23088.099999.2023-90:"
+        ),
+        estilo_link,
+    )
+
+    tabela_exemplo = Table(
+        [["23088", "099999", "2023", "90"]],
+        colWidths=exemplo_larguras,
+    )
+    tabela_exemplo.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.8, colors.HexColor("#777777")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f4f4f4")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#333333")),
+            ]
+        )
+    )
+
+    linha_exemplo = Table([[tabela_exemplo]], colWidths=caixa_largura)
+    linha_exemplo.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+
+    texto_inferior = Paragraph(
+        "Em seguida, clicar na lupa à direita para ter acesso ao conteúdo do processo que esteja classificado como OSTENSIVO.",
+        estilo_texto,
+    )
+
+    caixa_orientacao = Table(
+        [[texto_superior], [Spacer(1, 0.06 * inch)], [linha_exemplo], [Spacer(1, 0.06 * inch)], [texto_inferior]],
+        colWidths=caixa_largura,
+    )
+    caixa_orientacao.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#9e9e9e")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
+
+    story.append(caixa_orientacao)
+    story.append(Spacer(1, 0.18 * inch))
+
+
 # --------------------------------------------------
 # Callback: gerar PDF do PCA
 # --------------------------------------------------
@@ -1097,6 +1301,7 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento, ano_selecionado):
 
     styles = getSampleStyleSheet()
     story = []
+    largura_util = pagesize[0] - doc.leftMargin - doc.rightMargin
 
     tz_brasilia = timezone("America/Sao_Paulo")
     data_hora_brasilia = datetime.now(tz_brasilia).strftime("%d/%m/%Y %H:%M:%S")
@@ -1225,7 +1430,7 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento, ano_selecionado):
             for c in cols_plan:
                 valor = str(row[c]).strip()
                 if c in ["Nome Classe/Grupo"]:
-                    linha.append(wrap_pdf(valor))
+                    linha.append(wrap_pdf_center(valor))
                 else:
                     linha.append(simple_pdf(valor))
             table_data_plan.append(linha)
@@ -1241,20 +1446,22 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento, ano_selecionado):
         style_list_plan = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("FONTSIZE", (0, 0), (-1, 0), 7),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("FONTSIZE", (0, 1), (-1, -1), 7),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ("LEFTPADDING", (0, 0), (-1, -1), 2),
             ("RIGHTPADDING", (0, 0), (-1, -1), 2),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
         ]
         tbl_plan.setStyle(TableStyle(style_list_plan))
         story.append(tbl_plan)
-        story.append(Spacer(1, 0.2 * inch))
+        story.append(Spacer(1, 0.14 * inch))
+        if dados_processos:
+            adicionar_orientacoes_sipac_pdf(story, largura_util)
 
     # PROCESSOS
     if dados_processos:
@@ -1290,13 +1497,13 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento, ano_selecionado):
             "Valor_fmt": "Valor",
         }
         width_proc = {
-            "DFD": 0.85 * inch,
-            "Área requisitante": 1.0 * inch,
-            "Material ou Serviço": 1.1 * inch,
+            "DFD": 0.8 * inch,
+            "Área requisitante": 0.95 * inch,
+            "Material ou Serviço": 1.0 * inch,
             "Item": 0.5 * inch,
-            "Processo": 1.05 * inch,
-            "Objeto": 1.4 * inch,
-            "Observações": 1.4 * inch,
+            "Processo": 1.5 * inch,
+            "Objeto": 1.25 * inch,
+            "Observações": 1.25 * inch,
             "Valor_fmt": 0.9 * inch,
         }
 
@@ -1307,8 +1514,8 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento, ano_selecionado):
             linha = []
             for c in cols_proc:
                 valor = str(row[c]).strip()
-                if c in ["Objeto", "Observações"]:
-                    linha.append(wrap_pdf(valor))
+                if c in ["Objeto", "Observações", "Processo"]:
+                    linha.append(wrap_pdf_center(valor))
                 else:
                     linha.append(simple_pdf(valor))
             table_data_proc.append(linha)
@@ -1324,13 +1531,13 @@ def gerar_pdf_pca(n, dados_processos, dados_planejamento, ano_selecionado):
         style_list_proc = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b2b57")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("FONTSIZE", (0, 0), (-1, 0), 7),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("FONTSIZE", (0, 1), (-1, -1), 7),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ("LEFTPADDING", (0, 0), (-1, -1), 2),
             ("RIGHTPADDING", (0, 0), (-1, -1), 2),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f0f0")]),
